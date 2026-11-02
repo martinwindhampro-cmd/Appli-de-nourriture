@@ -178,7 +178,14 @@ ol.steps li { margin-bottom: 6px; }
    Laisse FIREBASE_CONFIG à null pour utiliser l'appli en local (données sur cet appareil).
    Pour synchroniser téléphone et ordinateur : crée un projet Firebase, active
    « Authentication → E-mail/Mot de passe » et « Firestore », puis colle ici la config web. */
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAqfrPS3L3XvrP3Jmt5urtewjsU1pm6rj8",
+  authDomain: "appli-de-suivis-repas.firebaseapp.com",
+  projectId: "appli-de-suivis-repas",
+  storageBucket: "appli-de-suivis-repas.firebasestorage.app",
+  messagingSenderId: "284665491645",
+  appId: "1:284665491645:web:e935e754a9b3bdd44347d4"
+};
 
 let auth = null, db = null, currentUser = null;
 if (FIREBASE_CONFIG && window.firebase) {
