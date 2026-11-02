@@ -76,10 +76,13 @@ const blank = () => ({
   shop: { checked: {}, extra: [] },   // liste de courses : cases cochées, articles ajoutés à la main
   myRecipes: [],    // recettes perso (même format que RECIPES)
   favs: {},         // recettes favorites
+  weights: [],      // [ { d: 'AAAA-MM-JJ', kg } ]
+  water: {},        // 'AAAA-MM-JJ' → verres d'eau
+  barcodes: {},     // code-barres → ingrédient
 });
-const MAIN_FIELDS = ['profile', 'stock', 'customIngs', 'ticketMap', 'plan', 'shop', 'myRecipes', 'favs'];
+const MAIN_FIELDS = ['profile', 'stock', 'customIngs', 'ticketMap', 'plan', 'shop', 'myRecipes', 'favs', 'weights', 'water', 'barcodes'];
 let S = blank();
-const UI = { tab: 'home', day: today(), rType: 'all', rSearch: '', persons: null, sSearch: '', sPlace: 'all', week: 0, planView: 'week' };
+const UI = { tab: 'home', day: today(), rCui: '', rType: 'all', rSearch: '', persons: null, sSearch: '', sPlace: 'all', week: 0, planView: 'week' };
 
 function loadLocal() {
   try { const raw = localStorage.getItem(LS_KEY); if (raw) { const d = JSON.parse(raw); S = Object.assign(blank(), d); S.profile = Object.assign(blank().profile, d.profile); S.shop = Object.assign(blank().shop, d.shop); } } catch (e) { console.warn(e); }
@@ -131,11 +134,11 @@ function listenCloud() {
 function listenDays() {
   if (!CLOUD || !currentUser) return;
   unsubDays.forEach(u => u()); unsubDays = [];
-  const keys = new Set([UI.day, today(), shiftDay(today(), -1), shiftDay(today(), -2), shiftDay(today(), -3)]);
+  const keys = new Set([UI.day, ...Array.from({ length: 7 }, (_, k) => shiftDay(today(), -k))]);
   for (const day of keys) unsubDays.push(dayDoc(day).onSnapshot(snap => {
     if (snap.metadata.hasPendingWrites) return;
     S.days[day] = snap.exists ? (snap.data().entries || []) : (S.days[day] || []);
-    saveLocal(); if (UI.tab === 'home') render();
+    saveLocal(); if (UI.tab === 'home' || UI.tab === 'profile') render();
   }));
 }
 
@@ -235,6 +238,15 @@ function recipeState(r, persons, stock = S.stock) {
   const missing = lines.filter(l => !l.opt && !l.ok);
   return { lines, missing, ratio: need ? have / need : 1, ok: !missing.length, n };
 }
+const cuiLabel = id => { const c = CUISINES.find(x => x[0] === (CUI[id] || 'fr')); return c ? `${c[2]} ${c[1]}` : ''; };
+// Protéine principale d'une recette (pour ne pas manger du poulet à tous les repas)
+const PROT_OF = { poulet: 'volaille', dinde: 'volaille', cordon_bleu: 'volaille', nuggets: 'volaille', boeuf_hache: 'boeuf', boeuf_braiser: 'boeuf', boeuf_emince: 'boeuf',
+  porc: 'porc', lardons: 'porc', jambon: 'porc', saucisse: 'porc', chorizo: 'porc', bacon: 'porc', thon: 'poisson', saumon: 'poisson', saumon_fume: 'poisson',
+  poisson_blanc: 'poisson', poisson_pane: 'poisson', crevettes: 'poisson', surimi: 'poisson', sardines: 'poisson', oeuf: 'oeuf' };
+function mainProt(r) {
+  for (const x of r.ings) { if (x.opt) continue; const g = PROT_OF[x.ing] || PROT_OF[ingOf(x.ing).fam]; if (g) return g; }
+  return 'vege';
+}
 // Ce que j'ai mangé ou prévu récemment (pour varier)
 function recentRecipes(daysBack = 3) {
   const set = new Set();
@@ -294,9 +306,10 @@ function autoFill(days) {
   const used = new Map();   // recette → dernier jour prévu
   const recent = recentRecipes();
   for (const day of Object.keys(S.plan)) for (const s in S.plan[day]) { const id = S.plan[day][s].r || S.plan[day][s].left; if (id) used.set(id, day); }
-  let filled = 0, prev = null;
+  let filled = 0, prev = null, prevR = null;
   for (const day of days) for (const [s] of planSlots()) {
-    if (slotOf(day, s) || slotPast(day, s)) { prev = (slotOf(day, s) || {}).r || prev; continue; }
+    if (slotOf(day, s) || slotPast(day, s)) { prev = (slotOf(day, s) || {}).r || (slotOf(day, s) || {}).left || prev; continue; }
+    prevR = prev && recipeById(prev);
     const persons = S.profile.persons || 1, types = s === 'pdj' ? ['pdj'] : ['plat'];
     const nextDay = shiftDay(day, 1), batch = s === 'diner' && S.profile.batch && !slotOf(nextDay, 'dej') && days.includes(nextDay);
     let best = null;
@@ -305,6 +318,8 @@ function autoFill(days) {
       let sc = st.ok ? 100 : st.ratio * 55 - st.missing.length * 8;
       if (S.favs[r.id]) sc += 12;
       if (r.id === prev) sc -= 100;
+      if (prevR && mainProt(prevR) === mainProt(r)) sc -= 14;   // pas deux fois la même viande d'affilée
+      if (prevR && (CUI[prevR.id] || 'fr') === (CUI[r.id] || 'fr')) sc -= 6;
       const last = used.get(r.id);
       if (last) sc -= Math.abs(keyDate(last) - keyDate(day)) < 3 * 864e5 ? 45 : 20;   // varier sur la semaine
       if (recent.has(r.id)) sc -= 20;
@@ -345,13 +360,13 @@ const ICONS = {
   stock: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M5 10h14M9 6v1M9 13v3"/>',
   profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
 };
-const TABS = [['home', 'Accueil'], ['plan', 'Planning'], ['recipes', 'Recettes'], ['stock', 'Stock'], ['profile', 'Profil']];
+const TABS = [['home', 'Accueil'], ['plan', 'Planning'], ['recipes', 'Recettes'], ['stock', 'Stock'], ['profile', 'Moi']];
 const svgI = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg>`;
 
 function render() {
   buildIng(); PORTION = null;
   $('tabs').innerHTML = `<div class="in">${TABS.map(([k, l]) => `<button data-tab="${k}" class="${UI.tab === k ? 'on' : ''}">${svgI(k)}${l}</button>`).join('')}</div>`;
-  $('title').textContent = { home: helloText(), plan: 'Planning', recipes: 'Recettes', stock: 'Mon stock', profile: 'Profil' }[UI.tab];
+  $('title').textContent = { home: helloText(), plan: 'Planning', recipes: 'Recettes', stock: 'Mon stock', profile: 'Moi' }[UI.tab];
   $('view').innerHTML = { home: viewHome, plan: viewPlan, recipes: viewRecipes, stock: viewStock, profile: viewProfile }[UI.tab]();
   $('fab').hidden = UI.tab !== 'home';
 }
@@ -392,7 +407,7 @@ function viewHome() {
     <div class="grow">
       <div class="small mute" style="margin-bottom:6px"><b class="num" style="color:var(--ink)">${fr(r0(tot.kcal))}</b> / ${fr(t.kcal)} kcal</div>
       ${macro('p', 'Protéines', 'var(--p)')}${macro('g', 'Glucides', 'var(--g)')}${macro('l', 'Lipides', 'var(--l)')}
-    </div></div>`;
+    </div></div>${homeWater()}`;
   // Menu prévu
   const slots = planSlots().map(([s, lbl, emo]) => ({ s, lbl, emo, sl: slotOf(UI.day, s) })).filter(x => x.sl);
   if (slots.length) h += `<div class="sec-h"><h2>Au menu</h2><button class="link" data-act="tab" data-tab="plan">Planning ›</button></div>
@@ -493,14 +508,16 @@ function viewRecipes() {
   const persons = UI.persons ?? S.profile.persons ?? 1, q = norm(UI.rSearch), f = UI.rType;
   let list = allRecipes().map(r => ({ r, st: recipeState(r, persons) }));
   list = list.filter(({ r, st }) => (!q || norm(r.name).includes(q) || r.ings.some(x => norm(ingOf(x.ing).name).includes(q)))
+    && (!UI.rCui || CUI[r.id] === UI.rCui || (UI.rCui === 'fr' && !CUI[r.id] && r.type === 'plat'))
     && (f === 'all' || f === r.type || (f === 'fav' && S.favs[r.id]) || (f === 'fast' && r.time <= 20) || (f === 'prot' && st.n.p >= 30) || (f === 'mine' && r.mine) || (f === 'boite' && r.boite)));
   list.sort((a, b) => b.st.ratio - a.st.ratio || (S.favs[b.r.id] ? 1 : 0) - (S.favs[a.r.id] ? 1 : 0) || b.st.n.p - a.st.n.p);
   const ready = list.filter(x => x.st.ok), near = list.filter(x => x.st.missing.length === 1), rest = list.filter(x => x.st.missing.length > 1);
+  const cuis = `<div class="chips">${[['', 'Toutes cuisines', '🍴']].concat(CUISINES).map(([k, l, e]) => `<button class="chip ${UI.rCui === k ? 'on' : ''}" data-act="rcui" data-c="${k}">${e} ${l}</button>`).join('')}</div>`;
   const chips = [['all', 'Tout'], ['plat', '🍽️ Plats'], ['pdj', '☀️ Petit-déj'], ['collation', '🍎 Collations'], ['fav', '♥ Favoris'], ['fast', '⚡ Rapide'], ['prot', '💪 Protéiné'], ['boite', '🥡 Boîtes'], ['mine', '👤 Mes recettes']];
   let h = `<div class="row" style="margin-bottom:10px;gap:8px">
     <input type="search" id="r-search" placeholder="Recette ou ingrédient…" value="${esc(UI.rSearch)}">
     <div class="persons" title="Nombre de personnes"><button data-act="persons" data-d="-1" aria-label="Moins">−</button><span>👤 ${persons}</span><button data-act="persons" data-d="1" aria-label="Plus">+</button></div></div>
-  <div class="chips">${chips.map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-act="rtype" data-f="${k}">${l}</button>`).join('')}</div>`;
+  <div class="chips">${chips.map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-act="rtype" data-f="${k}">${l}</button>`).join('')}</div>${cuis}`;
   const sec = (title, sub, arr) => arr.length ? `<div class="sec-h"><h2>${title} <span class="count">${arr.length}</span></h2></div>${sub ? `<p class="small mute" style="margin:-4px 0 8px">${sub}</p>` : ''}<div class="rgrid">${arr.map(x => recipeCard(x.r, x.st)).join('')}</div>` : '';
   if (!list.length) h += `<div class="empty">Aucune recette ne correspond.</div>`;
   h += sec('Prêtes à cuisiner', 'Tu as tout ce qu\'il faut', ready) + sec('Il manque un ingrédient', '', near) + sec('Autres recettes', '', rest);
@@ -516,7 +533,8 @@ function viewStock() {
   const count = p => all.filter(it => p === 'all' || it.place === p).length;
   let h = `<div class="row" style="gap:8px;margin-bottom:10px">
     <button class="btn pri grow" data-act="add-stock">+ Ajouter</button>
-    <button class="btn grow" data-act="import-ticket">📄 Ticket Super U</button></div>
+    <button class="btn grow" data-act="import-ticket">📄 Ticket</button>
+    <button class="btn" data-act="scan" aria-label="Scanner un code-barres">📷</button></div>
   <input type="search" id="s-search" placeholder="Chercher dans mon stock…" value="${esc(UI.sSearch)}" style="margin-bottom:10px">
   <div class="chips">${[['all', 'Tout', '📦']].concat(PLACES).map(([k, l, e]) => `<button class="chip ${pf === k ? 'on' : ''}" data-act="splace" data-p="${k}">${e} ${l} <span class="cnt">${count(k)}</span></button>`).join('')}</div>`;
   if (!S.stock.length) return h + `<div class="card empty"><div style="font-size:40px">🧺</div><b>Ton stock est vide</b><p class="small mute">Importe ton dernier ticket Super U, ou ajoute à la main ce que tu as dans le frigo, le congélateur et le placard.</p>
@@ -545,7 +563,7 @@ function stockRow(it) {
 /* ----- Profil ----- */
 function viewProfile() {
   const p = S.profile, T = targets(), t = T.t;
-  return `<div class="card">
+  return `${viewProgress()}<div class="card">
     <h3>🧍 Mon profil</h3>
     <div class="grid2">
       <div><label class="f">Sexe</label><div class="seg">${[['h', 'Homme'], ['f', 'Femme']].map(([k, l]) => `<button class="${p.sex === k ? 'on' : ''}" data-act="pf-seg" data-k="sex" data-v="${k}">${l}</button>`).join('')}</div></div>
@@ -758,7 +776,7 @@ function sheetRecipe(id, persons) {
       <button class="icon-btn ghost r-close" data-act="close" aria-label="Fermer">×</button>
       <button class="icon-btn ghost r-fav ${S.favs[r.id] ? 'on' : ''}" data-act="fav" data-id="${esc(r.id)}" aria-label="Favori">${S.favs[r.id] ? '♥' : '♡'}</button></div>
     <h2 class="r-title">${esc(r.name)}</h2>
-    <div class="chips wrap" style="margin-bottom:8px"><span class="badge">${RTYPES[r.type]}</span><span class="badge">⏱ ${r.time} min</span>${r.boite ? '<span class="badge">🥡 se garde en boîte</span>' : ''}${r.mine ? '<span class="badge">👤 ma recette</span>' : ''}</div>
+    <div class="chips wrap" style="margin-bottom:8px"><span class="badge">${RTYPES[r.type]}</span><span class="badge">⏱ ${r.time} min</span>${CUI[r.id] ? `<span class="badge">${cuiLabel(r.id)}</span>` : ''}${r.boite ? '<span class="badge">🥡 se garde en boîte</span>' : ''}${r.mine ? '<span class="badge">👤 ma recette</span>' : ''}</div>
     <div class="card macro-card">
       <div class="macro-big"><b>${r0(n.kcal)}</b><span>kcal / portion</span></div>
       <div class="grow">
@@ -781,8 +799,9 @@ function sheetRecipe(id, persons) {
     ${!st.ok ? `<div class="banner">Il manque : <b>${st.missing.map(m => esc(m.i.name)).join(', ')}</b>.
       <button class="link" data-act="add-missing" data-id="${esc(r.id)}" data-n="${persons}">Ajouter à la liste de courses</button></div>` : ''}
     <div class="sheet-actions">
-      <button class="btn" data-act="plan-recipe" data-id="${esc(r.id)}" data-n="${persons}">🗓️ Planifier</button>
-      <button class="btn pri grow" id="cook">🍳 Je cuisine</button></div>
+      <button class="btn" data-act="plan-recipe" data-id="${esc(r.id)}" data-n="${persons}" aria-label="Planifier">🗓️</button>
+      <button class="btn" data-act="cook-mode" data-id="${esc(r.id)}" data-n="${persons}">👨‍🍳 Pas à pas</button>
+      <button class="btn pri grow" id="cook">🍳 J'ai cuisiné</button></div>
     <div class="row center" style="gap:4px;margin-top:10px;justify-content:center">
       ${r.mine ? `<button class="link" data-act="edit-recipe" data-id="${esc(r.id)}">Modifier</button> · <button class="link danger" data-act="del-recipe" data-id="${esc(r.id)}">Supprimer</button>` : `<button class="link" data-act="copy-recipe" data-id="${esc(r.id)}">Créer ma version de cette recette</button>`}</div>`, sh => {
     sh.querySelector('#pm').onclick = () => sheetRecipe(id, Math.max(1, persons - 1));
@@ -845,17 +864,25 @@ function sheetEatBox(id, plan) {
 }
 
 // --- Journal : ajouter ---
-function sheetAddEntry(mode = 'stock') {
+function sheetAddEntry(mode = recentFoods().length ? 'recent' : 'stock') {
   const tabs = `<div class="seg" style="margin-bottom:12px">
-    <button class="${mode === 'stock' ? 'on' : ''}" data-act="entry-mode" data-m="stock">🧊 De mon stock</button>
+    <button class="${mode === 'recent' ? 'on' : ''}" data-act="entry-mode" data-m="recent">⏱ Récents</button>
+    <button class="${mode === 'stock' ? 'on' : ''}" data-act="entry-mode" data-m="stock">🧊 Stock</button>
     <button class="${mode === 'food' ? 'on' : ''}" data-act="entry-mode" data-m="food">🔎 Aliment</button>
-    <button class="${mode === 'free' ? 'on' : ''}" data-act="entry-mode" data-m="free">🍴 Resto…</button></div>`;
+    <button class="${mode === 'free' ? 'on' : ''}" data-act="entry-mode" data-m="free">🍴 Resto</button></div>`;
+  if (mode === 'recent') {
+    const list = recentFoods();
+    return openSheet(`${sheetHead('Ajouter un repas')}${tabs}
+      <label class="f">Repas</label><div class="seg" id="meal">${MEALS.map(([k, l, e]) => `<button data-m="${k}" class="${k === currentMeal() ? 'on' : ''}">${e}</button>`).join('')}</div>
+      <p class="tiny mute">Un appui = ajouté tout de suite.</p>
+      ${list.map((e, k) => `<div class="res" data-act="recent-add" data-k="${k}">${tile(e.recipe ? remoOf(recipeById(e.recipe) || {}) : '🍽️', 'sm')}<div class="grow">${esc(e.name)}<div class="tiny mute num">${r0(e.kcal)} kcal · P ${r0(e.p)} g</div></div><span class="badge">+</span></div>`).join('') || '<div class="empty small">Rien de récent pour l\'instant.</div>'}`, sh => wireSeg(sh));
+  }
   if (mode === 'stock') {
     const items = S.stock.filter(it => !it.dish);
     const boxes = S.stock.filter(it => it.dish);
     openSheet(`${sheetHead('Ajouter un repas')}${tabs}
       ${boxes.map(b => `<div class="res" data-box="${b.id}">${tile('🥡', 'sm')}<div class="grow">${esc(b.dish.name)}<div class="tiny mute">boîte · ${b.dish.n.kcal} kcal / portion</div></div></div>`).join('')}
-      <input type="search" class="ip-search" placeholder="Chercher dans mon stock"><div class="results"></div>`, sh => {
+      <div class="row" style="gap:8px"><input type="search" class="ip-search" placeholder="Chercher dans mon stock"><button class="btn" data-act="scan" style="flex:none" aria-label="Scanner">📷</button></div><div class="results"></div>`, sh => {
       sh.querySelectorAll('[data-box]').forEach(x => x.onclick = () => sheetEatBox(x.dataset.box));
       const inp = sh.querySelector('.ip-search'), res = sh.querySelector('.results');
       const draw = () => {
@@ -892,8 +919,9 @@ function sheetAddEntry(mode = 'stock') {
     });
   }
 }
-function sheetEntryQty(id) {
-  const i = ingOf(id), av = i.base ? 0 : available(id), por = i.unit === 'pc' ? 1 : i.pw && i.pw <= 400 ? i.pw : portionOf(id);
+function sheetEntryQty(id, stockId) {
+  stockId = stockId || id;
+  const i = ingOf(id), av = ingOf(stockId).base ? 0 : available(stockId), por = i.unit === 'pc' ? 1 : i.pw && i.pw <= 400 ? i.pw : portionOf(id);
   openSheet(`${sheetHead(i.name, emoOf(id))}
     <label class="f">Quantité</label>
     <div class="chips wrap">${[0.5, 1, 2].map(k => `<button class="chip" data-pre="${+(por * k).toFixed(1)}">${fmtQty(id, por * k)}</button>`).join('')}</div>
@@ -910,7 +938,7 @@ function sheetEntryQty(id) {
       const q = readQty(sh, id); if (q <= 0) return toast('Indique une quantité');
       const n = nutrOf(id, q), ded = sh.querySelector('#ded');
       addEntry(UI.day, { id: uid(), meal: sh.querySelector('#meal button.on').dataset.m, name: `${i.name} (${fmtQty(id, q)})`, ...roundN(n) });
-      if (ded && ded.checked) { deduct(id, Math.min(q, av)); save(); }
+      if (ded && ded.checked) { deduct(stockId, Math.min(q, av)); save(); }
       closeSheet(); render(); toast('Ajouté au journal');
     };
   });
@@ -1072,6 +1100,7 @@ document.addEventListener('click', e => {
     case 'open-recipe': return sheetRecipe(id, d.n ? +d.n : undefined);
     case 'persons': UI.persons = Math.max(1, (UI.persons ?? S.profile.persons ?? 1) + +d.d); return render();
     case 'rtype': UI.rType = d.f; return render();
+    case 'rcui': UI.rCui = d.c; return render();
     case 'fav': S.favs[id] ? delete S.favs[id] : (S.favs[id] = true); save(); render(); return sheetRecipe(id);
     case 'plan-recipe': return sheetPlanRecipe(id, +d.n || 1);
     case 'add-missing': {

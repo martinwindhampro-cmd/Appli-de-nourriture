@@ -2,9 +2,9 @@
    • Fichiers de l'appli (page, scripts) : réseau d'abord → toujours la dernière version publiée ; copie de secours hors ligne.
    • Bibliothèques (Firebase, pdf.js), police et icônes : copie locale d'abord (leurs adresses ne changent pas).
    • Les données (Firestore) ne passent pas par ici : Firebase gère lui-même le hors-ligne. */
-const V = 'repas-v3';
-const CORE = ['./', './index.html', './app.js', './data.js', './ticket.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
-const LIBS = /^https:\/\/(www\.gstatic\.com\/firebasejs\/|cdnjs\.cloudflare\.com\/ajax\/libs\/pdf\.js\/|fonts\.googleapis\.com\/|fonts\.gstatic\.com\/)/;
+const V = 'repas-v4';
+const CORE = ['./', './index.html', './app.js', './data.js', './ticket.js', './extras.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const LIBS = /^https:\/\/(www\.gstatic\.com\/firebasejs\/|cdnjs\.cloudflare\.com\/ajax\/libs\/pdf\.js\/|fonts\.googleapis\.com\/|fonts\.gstatic\.com\/|unpkg\.com\/@zxing\/)/;
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));

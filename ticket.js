@@ -78,6 +78,7 @@ const TICKET_RULES = [
   [/LIEGEOIS|DESSERT|CREME DESS|DANETTE|MOUSSE|RIZ AU LAIT|SEMOULE AU LAIT|FLAN/, 'dessert_lacte'],
   [/RAVIOLI|CANNELLONI/, s => /BOITE|4\/4|CONSERVE/.test(s) ? 'raviolis_boite' : 'raviolis_frais'],
   [/TORTELLINI|GNOCCHI/, s => /GNOCCHI/.test(s) ? 'gnocchi' : 'raviolis_frais'],
+  [/FEUILLES? (DE )?LASAGNE|LASAGNES? (U |BARILLA|PANZANI)?\d/, 'feuilles_lasagne'], [/PESTO/, 'pesto'], [/GALETTE.*(SARRASIN|BLE NOIR)|SARRASIN/, 'galette_sarrasin'],
   [/PIZZA/, 'pizza'], [/LASAGNE|CASSOULET|CHOUCROUTE|PARMENTIER|PAELLA|COUSCOUS ROYAL|BLANQUETTE|PLAT CUISINE|TAJINE/, 'plat_cuisine'],
   [/SOUPE|VELOUTE|POTAGE|GASPACHO/, 'soupe'], [/MOUSLINE|PUREE (EN )?FLOCON/, 'puree_flocons'],
   [/NUTELLA|PATE A TARTINER|PATE TARTIN|TARTINER/, 'pate_tartiner'], [/CONFITURE|CONFIT\b/, 'confiture'], [/COMPOTE|POMPOTE/, 'compote'],
@@ -88,7 +89,7 @@ const TICKET_RULES = [
   [/FLOCON|AVOINE/, 'flocons_avoine'], [/MUESLI/, 'muesli'], [/FROSTIES|CEREALES|CORN ?FLAKES|CHOCAPIC|SPECIAL K|TRESOR|COCO POPS|MIEL POPS/, 'cereales'],
   [/AMANDE|NOISETTES? (DECORT|GRILL)|NOIX|CAJOU|PISTACHE|CACAHUET|RAISINS SECS|ABRICOTS? SEC|FRUITS SECS/, 'noix'],
   // Viandes, poissons
-  [/LAIT.*COCO|COCO/, 'lait_coco'], [/AIGUILLETTE/, 'aiguillettes_poulet'], [/CUISSE.*POULET|HAUT.*CUISSE|PILON/, 'cuisse_poulet'],
+  [/LAIT.*COCO|COCO/, 'lait_coco'], [/BOURGUIGNON|A BRAISER|BRAISER|POT.AU.FEU|PALERON|JOUE/, 'boeuf_braiser'], [/EMINCE.*BOEUF|BOEUF.*EMINCE|LANIERES? (DE )?BOEUF|FAJITAS? BOEUF/, 'boeuf_emince'], [/AIGUILLETTE/, 'aiguillettes_poulet'], [/CUISSE.*POULET|HAUT.*CUISSE|PILON/, 'cuisse_poulet'],
   [/NUGGET/, 'nuggets'], [/CORDON/, 'cordon_bleu'], [/DINDE|ESCALOPE/, 'dinde'], [/POULET|VOLAILLE/, 'poulet'],
   [/STEAK|STK|HACHE.*\b5\s?%/, s => /\b5\s?%/.test(s) ? 'steak_hache_5' : 'steak_hache_15'], [/HACHE|BOLOGNAISE CRUE/, 'viande_hachee_20'],
   [/LARDON/, 'lardons'], [/BACON/, 'bacon'], [/JAMBON CRU|SERRANO|BAYONNE|PARME|PROSCIUTTO/, 'jambon_cru'], [/JAMBON|JBN/, 'jambon'],
@@ -109,11 +110,11 @@ const TICKET_RULES = [
   [/LAIT/, s => /ENTIER/.test(s) ? 'lait_entier' : /ECREME\b(?!.*1\/2)|ECREME U/.test(s) && !/1\/2|DEMI/.test(s) ? 'lait_ecreme' : 'lait'],
   // Féculents
   [/COQUILLETTE/, 'coquillettes'], [/MACARONI/, 'macaroni'], [/SPAGH/, 'spaghetti'], [/PENNE/, 'penne'], [/CAPELLINI/, 'capellini'], [/TAGLIATEL/, 'tagliatelles'],
-  [/\bPATES\b|FUSILLI|TORSADE|PAPILLON|FARFALLE|RIGATONI|NOUILLE|VERMICELLE/, 'pates'], [/\bRIZ\b/, 'riz'], [/COUSCOUS|SEMOULE/, 'semoule'],
+  [/NOUILLE|RAMEN|UDON|VERMICELLE.*RIZ/, 'nouilles'], [/\bPATES\b|FUSILLI|TORSADE|PAPILLON|FARFALLE|RIGATONI|VERMICELLE/, 'pates'], [/\bRIZ\b/, 'riz'], [/COUSCOUS|SEMOULE/, 'semoule'],
   [/QUINOA/, 'quinoa'], [/BOULGOUR/, 'boulgour'], [/LENTILLE/, 'lentilles'],
   [/NOISETTE/, 'pommes_noisettes'], [/FRITE|POTATOES|\bROSTI\b/, 'frites_four'], [/POMMES? DE TERRE|\bPDT\b|GRENAILLE/, 'pdt'],
   [/TORTILLA|WRAP/, 'tortilla'], [/HAMBURGER|BURGER|BUNS/, (s, c) => /BOUCH|VIANDE|SURGELE SALE/.test(c) && !/BUNS|PAIN/.test(s) ? 'steak_hache_15' : 'pain_burger'], [/PAIN DE MIE|\bMIE\b/, 'pain_mie'], [/BAGUETTE|^PAIN\b|PAIN (COMPLET|CAMPAGNE|TRADITION)/, 'pain'],
-  [/FARINE/, 'farine'], [/FEUILLET/, 'pate_feuilletee'], [/BRISEE/, 'pate_brisee'], [/PATE A (TARTE|PIZZA)|SABLEE/, 'pate_tarte'],
+  [/FARINE/, 'farine'], [/CACAO|VAN HOUTEN/, 'cacao'], [/FEUILLET/, 'pate_feuilletee'], [/BRISEE/, 'pate_brisee'], [/PATE A (TARTE|PIZZA)|SABLEE/, 'pate_tarte'],
   // Sauces, épicerie
   [/TIKKA/, 'sauce_tikka'], [/SEASON|EPICE|ASSAISONNEMENT|CURRY|PAPRIKA|CUMIN|HERBES/, 'epices'], [/FAJITA|SALSA|TACO/, 'sauce_fajita'],
   [/SAUCE POIVRE/, 'sauce_poivre'], [/MAYONNAISE/, 'mayonnaise'], [/KETCHUP/, 'ketchup'], [/WHEY|PROTEIN/, 'whey'], [/^MIEL/, 'miel'],
@@ -127,7 +128,7 @@ const TICKET_RULES = [
   [/POELEE|MELANGE.*LEGUME|LEGUMES? (POUR|DU|SURG|CUISIN)|JARDINIERE|MACEDOINE|RATATOUILLE|WOK/, 'melange_legumes'],
   [/SALADE|LAITUE|MACHE|ROQUETTE|BATAVIA|SUCRINE|ICEBERG/, 'salade'], [/AVOCAT/, 'avocat'],
   [/BANANE/, 'banane'], [/CLEMENTINE|MANDARINE/, 'clementine'], [/ORANGE/, 'orange'], [/POIRE/, 'poire'], [/KIWI/, 'kiwi'],
-  [/FRAISE/, 'fraise'], [/\bRAISIN/, 'raisin'], [/^POMMES?\b|POMME (GOLDEN|GALA|PINK|GRANNY|CANADA|JAZZ)/, 'pomme'],
+  [/ANANAS/, 'ananas'], [/FRAISE/, 'fraise'], [/\bRAISIN/, 'raisin'], [/^POMMES?\b|POMME (GOLDEN|GALA|PINK|GRANNY|CANADA|JAZZ)/, 'pomme'],
   [/FRUITS ROUGES|FRAMBOISE|MYRTILLE|MURE/, 'fruits_rouges'],
   // Ingrédients de base
   [/HUILE/, 'huile'], [/SUCRE/, 'sucre'], [/MOUTARDE/, 'moutarde'], [/SOJA/, 'sauce_soja'], [/BOUILLON/, 'bouillon'], [/LEVURE/, 'levure'],

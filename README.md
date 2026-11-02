@@ -3,7 +3,7 @@
 Appli perso : stock (frigo, congélateur, placard), import du ticket Super U (PDF), recettes proposées selon ce que j'ai,
 planning de la semaine avec liste de courses, recettes perso, suivi calories et macros.
 
-Fichiers : `index.html` (page et design), `app.js` (l'appli), `ticket.js` (import du ticket Super U),
+Fichiers : `index.html` (page et design), `app.js` (l'appli), `extras.js` (eau, bilan, poids, mode cuisine, scan), `ticket.js` (import du ticket Super U),
 `data.js` (ingrédients, recettes, emojis, rayons), `sw.js` (hors ligne), icônes et manifeste.
 
 ## Mise en ligne (GitHub Pages)
