@@ -809,39 +809,104 @@ function parseSize(label) {
   const size = all.length ? toBase(+all[all.length - 1][1], all[all.length - 1][2]) : /\b4\/4\b/.test(L) ? 800 : null;
   return { size, pieces: pc ? +pc[1] : null };
 }
-// Association automatique nom du ticket → ingrédient (l'ordre compte : le plus précis d'abord)
+// Abréviations courantes des tickets de caisse → mots complets
+const TICKET_ABBR = {
+  FRO: 'FROMAGE', FROM: 'FROMAGE', FROMG: 'FROMAGE', BLC: 'BLANC', BL: 'BLANC', CR: 'CREME', CRE: 'CREME', SCE: 'SAUCE', STK: 'STEAK',
+  HACH: 'HACHE', BF: 'BOEUF', BOEU: 'BOEUF', YRT: 'YAOURT', YAO: 'YAOURT', BTE: 'BOITE', DESS: 'DESSERT', BOISS: 'BOISSON', BOIS: 'BOISSON',
+  CHAMP: 'CHAMPIGNON', CHAMPI: 'CHAMPIGNON', CER: 'CEREALES', CEREAL: 'CEREALES', EMMENT: 'EMMENTAL', EMMEN: 'EMMENTAL', MOZZA: 'MOZZARELLA',
+  CHOC: 'CHOCOLAT', CHOCO: 'CHOCOLAT', SAUC: 'SAUCISSE', SAUCIS: 'SAUCISSE', SAUCISS: 'SAUCISSE', PDT: 'POMME DE TERRE', TOM: 'TOMATE',
+  HAR: 'HARICOT', HARIC: 'HARICOT', LEGUM: 'LEGUME', LEGS: 'LEGUMES', BRIOC: 'BRIOCHE', PREP: 'PREPARATION', LIMONAD: 'LIMONADE',
+  CONF: 'CONFITURE', COMP: 'COMPOTE', CONC: 'CONCOMBRE', COURG: 'COURGETTE', CAROT: 'CAROTTE', POIV: 'POIVRON', OIGN: 'OIGNON',
+  JBN: 'JAMBON', JAMB: 'JAMBON', VOL: 'VOLAILLE', POUL: 'POULET', DIND: 'DINDE', ESCAL: 'ESCALOPE', SAUM: 'SAUMON', CREV: 'CREVETTE',
+  PAT: 'PATE', MAYO: 'MAYONNAISE', VINAIG: 'VINAIGRETTE', BISC: 'BISCUIT', GAT: 'GATEAU', SURG: 'SURGELE', CG: 'CREME GLACEE',
+};
+const expandLabel = s => s.split(/[^A-Z0-9%]+/).filter(Boolean).map(w => TICKET_ABBR[w] || w).join(' ');
+
+// Règles nom du ticket → ingrédient. L'ordre compte : le plus précis d'abord.
+// Chaque règle est testée sur le libellé brut ET sur sa version « déabréviée ».
 const TICKET_RULES = [
-  [/LAIT.*COCO|COCO/, 'lait_coco'], [/AIGUILLETTE/, 'aiguillettes_poulet'], [/CUISSE.*POULET|HAUT.*CUISSE/, 'cuisse_poulet'], [/POULET|DINDE/, 'poulet'],
-  [/STK|STEAK.*HACH|HACH.*5\s?%/, s => /\b5\s?%/.test(s) ? 'steak_hache_5' : 'steak_hache_15'], [/HACHE/, 'viande_hachee_20'],
-  [/LARDON/, 'lardons'], [/JAMBON/, 'jambon'], [/SURIMI/, 'surimi'], [/THON/, 'thon'], [/BATONNETS? DE POISSON|PANE/, 'poisson_pane'], [/SAUMON/, 'saumon'],
-  [/^OEUFS?\b/, 'oeuf'], [/SKYR/, 'skyr'], [/FRO.*BL|FROMAGE BLANC|FROM\.BLC/, s => /\b0\s?%/.test(s) ? 'fromage_blanc_0' : 'fromage_blanc'],
-  [/GREC/, 'yaourt_grec'], [/^YRT|YAOURT/, 'yaourt'], [/EMMENT|RAPE/, 'emmental'], [/MOZZA/, 'mozzarella'], [/CHEVRE/, 'chevre'],
-  [/FONDU|CHEDDAR/, 'fromage_fondu'], [/LOIK|ST MORET|TARTINE|CARRE FRAIS/, 'fromage_frais'], [/REBLOCHON/, 'reblochon'], [/PARMESAN|PARMIG/, 'parmesan'], [/^BEURRE/, 'beurre'],
-  [/BRIDELICE|18\s?%/, 'creme_18'], [/CR\.?\s?LEG|CREME LEG|12\s?%/, 'creme_12'], [/CREME|^CR\./, 'creme_30'], [/^LAIT|LAIT UHT|ECREME|ECRE\./, 'lait'],
+  // Boissons, produits sucrés, plats prêts (avant les ingrédients, pour éviter « JUS … POMME » → pomme)
+  [/MONSTER|RED ?BULL|ENERGY|BURN\b/, 'boisson_energisante'], [/SIROP/, 'sirop'],
+  [/\bJUS\b|NECTAR|SMOOTHIE|PUR JUS/, 'jus'],
+  [/\bCOLA\b|COCA|PEPSI|LIMONADE|LORINA|ORANGINA|FANTA|SPRITE|SCHWEPPES|ICE ?TEA|THE GLACE|SODA|BOISSON|PERRIER|OASIS/, s => /\b0\s?%|ZERO|LIGHT|SANS SUCRE/.test(s) ? 'soda_zero' : 'soda'],
+  [/CREME GLACEE|GLACE|SORBET|ESQUIMAU|\bCONES?\b|MAGNUM|\bBAC\b/, 'glace'],
+  [/CROISSANT/, 'croissant'], [/PAINS? (AU )?CHOC|CHOCOLATINE/, 'pain_chocolat'], [/BRIOCHE|PASQUIER|HARRYS?/, 'brioche'],
+  [/PREPARATION|ALSA|FLAN PAT/, 'preparation_dessert'],
+  [/LIEGEOIS|DESSERT|CREME DESS|DANETTE|MOUSSE|RIZ AU LAIT|SEMOULE AU LAIT|FLAN/, 'dessert_lacte'],
+  [/RAVIOLI|CANNELLONI/, s => /BOITE|4\/4|CONSERVE/.test(s) ? 'raviolis_boite' : 'raviolis_frais'],
+  [/TORTELLINI|GNOCCHI/, s => /GNOCCHI/.test(s) ? 'gnocchi' : 'raviolis_frais'],
+  [/PIZZA/, 'pizza'], [/LASAGNE|CASSOULET|CHOUCROUTE|PARMENTIER|PAELLA|COUSCOUS ROYAL|BLANQUETTE|PLAT CUISINE|TAJINE/, 'plat_cuisine'],
+  [/SOUPE|VELOUTE|POTAGE|GASPACHO/, 'soupe'], [/MOUSLINE|PUREE (EN )?FLOCON/, 'puree_flocons'],
+  [/NUTELLA|PATE A TARTINER|PATE TARTIN|TARTINER/, 'pate_tartiner'], [/CONFITURE|CONFIT\b/, 'confiture'], [/COMPOTE|POMPOTE/, 'compote'],
+  [/BISCOTTE|PAIN GRILLE|CRACOTTE/, 'biscottes'],
+  [/BISCUIT|GATEAU|COOKIE|PALMIER|MADELEINE|GAUFRE|PRINCE|PETIT BEURRE|SABLE|BARQUETTE|SPRITS|PIM'?S|FOURRES?/, 'biscuits'],
+  [/CHIPS|TUILE|CRACKER|BRETZEL|APERO|CURLY/, 'chips'],
+  [/CHOCOLAT.*LAIT|LAIT.*CHOCOLAT|MILKA/, 'chocolat_lait'], [/CHOCOLAT.*(NR|NOIR)|NOIR.*PATISS|PATISSIER/, 'chocolat_noir'],
+  [/FLOCON|AVOINE/, 'flocons_avoine'], [/MUESLI/, 'muesli'], [/FROSTIES|CEREALES|CORN ?FLAKES|CHOCAPIC|SPECIAL K|TRESOR|COCO POPS|MIEL POPS/, 'cereales'],
+  [/AMANDE|NOISETTES? (DECORT|GRILL)|NOIX|CAJOU|PISTACHE|CACAHUET|RAISINS SECS|ABRICOTS? SEC|FRUITS SECS/, 'noix'],
+  // Viandes, poissons
+  [/LAIT.*COCO|COCO/, 'lait_coco'], [/AIGUILLETTE/, 'aiguillettes_poulet'], [/CUISSE.*POULET|HAUT.*CUISSE|PILON/, 'cuisse_poulet'],
+  [/NUGGET/, 'nuggets'], [/CORDON/, 'cordon_bleu'], [/DINDE|ESCALOPE/, 'dinde'], [/POULET|VOLAILLE/, 'poulet'],
+  [/STEAK|STK|HACHE.*\b5\s?%/, s => /\b5\s?%/.test(s) ? 'steak_hache_5' : 'steak_hache_15'], [/HACHE|BOLOGNAISE CRUE/, 'viande_hachee_20'],
+  [/LARDON/, 'lardons'], [/BACON/, 'bacon'], [/JAMBON CRU|SERRANO|BAYONNE|PARME|PROSCIUTTO/, 'jambon_cru'], [/JAMBON|JBN/, 'jambon'],
+  [/CHORIZO|SAUCISSON|SALAMI|ROSETTE/, 'chorizo'], [/CHIPO/, 'chipolata'], [/MERGUEZ/, 'merguez'], [/STRASBOURG|KNACKI|FRANCFORT|KNACK/, 'knacki'],
+  [/SAUCISSE/, 'saucisse'], [/PORC|ECHINE|FILET MIGNON|COTE.*PORC|ROTI/, 'porc'],
+  [/SURIMI/, 'surimi'], [/THON/, 'thon'], [/SAUMON FUME|SAUMON.*FUME/, 'saumon_fume'], [/SAUMON/, 'saumon'],
+  [/CREVETTE|GAMBAS/, 'crevettes'], [/SARDINE/, 'sardines'], [/MAQUEREAU/, 'maquereau'],
+  [/BATONNETS? (DE )?POISSON|POISSON PANE|PANE/, 'poisson_pane'], [/CABILLAUD|COLIN|LIEU|MERLU|POISSON|COLINOT/, 'poisson_blanc'],
+  [/^OEUFS?\b|\bOEUFS? (PLEIN|FRAIS|BIO|CAT)/, 'oeuf'],
+  // Produits laitiers
+  [/SKYR/, 'skyr'], [/FROMAGE BLANC|FROM\.BLC|FRO.*BL/, s => /\b0\s?%/.test(s) ? 'fromage_blanc_0' : 'fromage_blanc'],
+  [/GREC/, 'yaourt_grec'], [/YAOURT|YRT|YAOS/, s => /FRUIT|AROM|VANILLE|FRAISE|PECHE|CITRON|SUCRE/.test(s) ? 'yaourt_fruits' : 'yaourt'],
+  [/EMMENTAL|RAPE/, 'emmental'], [/MOZZARELLA/, 'mozzarella'], [/CHEVRE/, 'chevre'], [/FONDU|CHEDDAR/, 'fromage_fondu'],
+  [/LOIK|ST MORET|SAINT MORET|CARRE FRAIS|PHILADELPHIA|FROMAGE FRAIS|BOURSIN/, 'fromage_frais'],
+  [/REBLOCHON/, 'reblochon'], [/RACLETTE/, 'raclette'], [/COMTE/, 'comte'], [/FETA/, 'feta'], [/CAMEMBERT|BRIE|COULOMMIERS/, 'camembert'],
+  [/RICOTTA/, 'ricotta'], [/MASCARPONE/, 'mascarpone'], [/PARMESAN|PARMIG|GRANA/, 'parmesan'], [/^BEURRE|BEURRE (DOUX|DEMI|SALE|TENDRE)/, 'beurre'],
+  [/BRIDELICE|18\s?%/, 'creme_18'], [/CREME LEG|CREME LIQ.*12|12\s?%|15\s?%/, 'creme_12'], [/CREME|^CR\b/, 'creme_30'],
+  [/LAIT/, s => /ENTIER/.test(s) ? 'lait_entier' : /ECREME\b(?!.*1\/2)|ECREME U/.test(s) && !/1\/2|DEMI/.test(s) ? 'lait_ecreme' : 'lait'],
+  // Féculents
   [/COQUILLETTE/, 'coquillettes'], [/MACARONI/, 'macaroni'], [/SPAGH/, 'spaghetti'], [/PENNE/, 'penne'], [/CAPELLINI/, 'capellini'], [/TAGLIATEL/, 'tagliatelles'],
-  [/GNOCCHI/, 'gnocchi'], [/\bPATES\b|FUSILLI|TORSADE|PAPILLON/, 'pates'], [/\bRIZ\b/, 'riz'], [/COUSCOUS|SEMOULE/, 'semoule'],
-  [/NOISETTE/, 'pommes_noisettes'], [/FRITES/, 'frites_four'], [/POMMES? DE TERRE|\bPDT\b/, 'pdt'],
-  [/TORTILLA/, 'tortilla'], [/HAMBURGER|BURGER|BUNS/, 'pain_burger'], [/PAIN DE MIE|\bMIE\b/, 'pain_mie'], [/BAGUETTE|^PAIN\b/, 'pain'],
-  [/FLOCON|AVOINE/, 'flocons_avoine'], [/MUESLI/, 'muesli'], [/FROSTIES|^CER\.|CEREALE|CORN ?FLAKES|CHOCAPIC|SPECIAL K/, 'cereales'], [/FARINE/, 'farine'],
-  [/FEUILLET/, 'pate_feuilletee'], [/BRISEE/, 'pate_brisee'],
-  [/TIKKA/, 'sauce_tikka'], [/FAJITA.*SEASON|SEASON|EPICE/, 'epices'], [/FAJITA|SALSA/, 'sauce_fajita'], [/SCE POIVRE|SAUCE POIVRE/, 'sauce_poivre'],
-  [/MAYO/, 'mayonnaise'], [/KETCHUP/, 'ketchup'], [/WHEY|PROTEIN/, 'whey'], [/CHOCOLAT.*(NR|NOIR)|PATISSIER/, 'chocolat_noir'], [/^MIEL/, 'miel'],
-  [/POIVRON/, (s, c) => /SURGEL/.test(c) ? 'poivrons_surgeles' : 'poivron'], [/OIGNON/, 'oignon'],
-  [/CONCASS/, 'tomates_concassees'], [/COULIS|SCE TOMATE|SAUCE TOMATE|PASSATA/, 'sauce_tomate'], [/TOMATE/, 'tomate'],
-  [/CHAMP/, (s, c) => /CONSERVE/.test(c) ? 'champignons_boite' : 'champignons'], [/\bMAIS\b/, 'mais'], [/PETITS? POIS/, 'petits_pois'],
-  [/HARICOTS? ROUGE/, 'haricots_rouges'], [/HARICOTS? VERT/, 'haricots_verts'], [/POIS CHICHE/, 'pois_chiches'], [/COURGETTE/, 'courgette'],
-  [/CAROTTE/, 'carotte'], [/SALADE|LAITUE|MACHE|ROQUETTE/, 'salade'], [/BROCOLI/, 'brocoli'], [/EPINARD/, 'epinards'],
-  [/BANANE/, 'banane'], [/^POMMES?\b/, 'pomme'], [/FRUITS ROUGES|FRAMBOISE|MYRTILLE/, 'fruits_rouges'],
-  [/HUILE/, 'huile'], [/^SUCRE/, 'sucre'], [/MOUTARDE/, 'moutarde'], [/SOJA/, 'sauce_soja'],
+  [/\bPATES\b|FUSILLI|TORSADE|PAPILLON|FARFALLE|RIGATONI|NOUILLE|VERMICELLE/, 'pates'], [/\bRIZ\b/, 'riz'], [/COUSCOUS|SEMOULE/, 'semoule'],
+  [/QUINOA/, 'quinoa'], [/BOULGOUR/, 'boulgour'], [/LENTILLE/, 'lentilles'],
+  [/NOISETTE/, 'pommes_noisettes'], [/FRITE|POTATOES|\bROSTI\b/, 'frites_four'], [/POMMES? DE TERRE|\bPDT\b|GRENAILLE/, 'pdt'],
+  [/TORTILLA|WRAP/, 'tortilla'], [/HAMBURGER|BURGER|BUNS/, (s, c) => /BOUCH|VIANDE|SURGELE SALE/.test(c) && !/BUNS|PAIN/.test(s) ? 'steak_hache_15' : 'pain_burger'], [/PAIN DE MIE|\bMIE\b/, 'pain_mie'], [/BAGUETTE|^PAIN\b|PAIN (COMPLET|CAMPAGNE|TRADITION)/, 'pain'],
+  [/FARINE/, 'farine'], [/FEUILLET/, 'pate_feuilletee'], [/BRISEE/, 'pate_brisee'], [/PATE A (TARTE|PIZZA)|SABLEE/, 'pate_tarte'],
+  // Sauces, épicerie
+  [/TIKKA/, 'sauce_tikka'], [/SEASON|EPICE|ASSAISONNEMENT|CURRY|PAPRIKA|CUMIN|HERBES/, 'epices'], [/FAJITA|SALSA|TACO/, 'sauce_fajita'],
+  [/SAUCE POIVRE/, 'sauce_poivre'], [/MAYONNAISE/, 'mayonnaise'], [/KETCHUP/, 'ketchup'], [/WHEY|PROTEIN/, 'whey'], [/^MIEL/, 'miel'],
+  [/CONCASS|PULPE/, 'tomates_concassees'], [/COULIS|SAUCE TOMATE|PASSATA|CONCENTRE/, 'sauce_tomate'],
+  // Fruits & légumes
+  [/POIVRON/, (s, c) => /SURGEL/.test(c) || /SURGEL/.test(s) ? 'poivrons_surgeles' : 'poivron'], [/OIGNON|ECHALOTE/, 'oignon'], [/TOMATE/, 'tomate'],
+  [/CHAMPIGNON/, (s, c) => /CONSERVE/.test(c) || /BOITE|1\/2|4\/4/.test(s) ? 'champignons_boite' : 'champignons'],
+  [/PETITS? POIS/, 'petits_pois'], [/\bMAIS\b/, 'mais'], [/HARICOTS? ROUGE/, 'haricots_rouges'], [/HARICOTS? VERT/, 'haricots_verts'],
+  [/POIS CHICHE/, 'pois_chiches'], [/COURGETTE/, 'courgette'], [/CAROTTE/, 'carotte'], [/CONCOMBRE/, 'concombre'], [/AUBERGINE/, 'aubergine'],
+  [/POIREAU/, 'poireau'], [/CHOU.?FLEUR/, 'chou_fleur'], [/BROCOLI/, 'brocoli'], [/EPINARD/, 'epinards'],
+  [/POELEE|MELANGE.*LEGUME|LEGUMES? (POUR|DU|SURG|CUISIN)|JARDINIERE|MACEDOINE|RATATOUILLE|WOK/, 'melange_legumes'],
+  [/SALADE|LAITUE|MACHE|ROQUETTE|BATAVIA|SUCRINE|ICEBERG/, 'salade'], [/AVOCAT/, 'avocat'],
+  [/BANANE/, 'banane'], [/CLEMENTINE|MANDARINE/, 'clementine'], [/ORANGE/, 'orange'], [/POIRE/, 'poire'], [/KIWI/, 'kiwi'],
+  [/FRAISE/, 'fraise'], [/\bRAISIN/, 'raisin'], [/^POMMES?\b|POMME (GOLDEN|GALA|PINK|GRANNY|CANADA|JAZZ)/, 'pomme'],
+  [/FRUITS ROUGES|FRAMBOISE|MYRTILLE|MURE/, 'fruits_rouges'],
+  // Ingrédients de base
+  [/HUILE/, 'huile'], [/SUCRE/, 'sucre'], [/MOUTARDE/, 'moutarde'], [/SOJA/, 'sauce_soja'], [/BOUILLON/, 'bouillon'], [/LEVURE/, 'levure'],
+  [/\bSEL\b|POIVRE/, 'sel_poivre'], [/\bAIL\b/, 'ail'], [/CITRON/, 'citron'],
 ];
 const ticketKey = label => label.toUpperCase().replace(/\s+/g, ' ').trim();
+// Renvoie { ing, how } : how = 'memo' (déjà choisi), 'regle' (reconnu), 'devine' (approché : à vérifier)
 function guessIng(label, cat) {
   const k = ticketKey(label);
-  if (S.ticketMap[k]) return S.ticketMap[k];
-  const s = norm(label).toUpperCase(), c = norm(cat).toUpperCase();
-  if (/SUCRE/.test(c) && /SURGEL/.test(c)) return '';   // glaces, viennoiseries surgelées
-  for (const [re, id] of TICKET_RULES) if (re.test(s)) return typeof id === 'function' ? id(s, c) : id;
-  return '';
+  const m = S.ticketMap[k];   // seuls tes choix manuels sont mémorisés ('__skip' = ne pas suivre)
+  if (m && m !== '__ignore') return { ing: m === '__skip' ? '' : m, how: 'memo' };
+  const raw = norm(label).toUpperCase(), s = raw + ' | ' + expandLabel(raw), c = norm(cat).toUpperCase();
+  for (const [re, id] of TICKET_RULES) if (re.test(s)) return { ing: typeof id === 'function' ? id(s, c) : id, how: 'regle' };
+  // Dernier recours : mots en commun avec le nom d'un ingrédient (≥ 5 lettres)
+  const words = expandLabel(raw).split(' ').filter(w => w.length >= 5);
+  let best = null, score = 0;
+  for (const i of allIngs()) {
+    const iw = norm(i.name).toUpperCase().split(/[^A-Z]+/).filter(w => w.length >= 5);
+    const sc = words.filter(w => iw.some(x => x.slice(0, 5) === w.slice(0, 5))).length;
+    if (sc > score) { score = sc; best = i.id; }
+  }
+  return best ? { ing: best, how: 'devine' } : { ing: '', how: '' };
 }
 function ticketQty(ingId, it) {
   const i = ingOf(ingId), pk = parseSize(it.label), n = it.count || 1;
@@ -856,12 +921,12 @@ function buildImport(text) {
   const items = parseTicket(text);
   const food = items.filter(it => it.tva !== '13' && it.total > 0), skipped = items.filter(it => it.tva === '13');
   const rows = food.map(it => {
-    const ing = guessIng(it.label, it.cat), i = ing && ingOf(ing);
-    const ignored = S.ticketMap[ticketKey(it.label)] === '__ignore';
-    return { ...it, ing: ignored ? '' : ing, qty: ing && !ignored ? ticketQty(ing, it) : 0,
-      place: /SURGEL/i.test(norm(it.cat)) ? 'congel' : i ? i.place : 'frigo', on: !!ing && !ignored && !(i && i.base) };
+    const { ing, how } = guessIng(it.label, it.cat), i = ing && ingOf(ing);
+    return { ...it, ing, how, qty: ing ? ticketQty(ing, it) : 0,
+      place: /SURGEL/i.test(norm(it.cat)) ? 'congel' : i ? i.place : 'frigo', on: !!ing && !(i && i.base) };
   });
-  const rank = r => r.on ? 0 : r.ing ? 1 : 2;   // reconnus d'abord, puis ingrédients de base, puis à associer
+  // à vérifier d'abord (devinés), puis reconnus, puis ingrédients de base, puis non suivis
+  const rank = r => r.how === 'devine' && r.ing ? 0 : r.on ? 1 : r.ing ? 2 : 3;
   rows.sort((a, b) => rank(a) - rank(b));
   IMPORT = { rows, skipped };
 }
@@ -889,13 +954,14 @@ function sheetImport() {
 function sheetImportReview() {
   const prev = document.querySelector('.sheet'), keep = prev && prev.querySelector('#t-add') ? prev.scrollTop : 0;
   const opts = allIngs().map(i => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('');
-  const nOn = IMPORT.rows.filter(r => r.on && r.ing && r.qty > 0).length, nTodo = IMPORT.rows.filter(r => !r.ing).length;
+  const nOn = IMPORT.rows.filter(r => r.on && r.ing && r.qty > 0).length, nGuess = IMPORT.rows.filter(r => r.ing && r.how === 'devine').length;
   openSheet(`${sheetHead('Vérifier le ticket')}
     <p class="small mute" style="margin-top:0">${IMPORT.rows.length} produits alimentaires${IMPORT.skipped.length ? ` · ${IMPORT.skipped.length} non alimentaires ignorés` : ''}.
-      ${nTodo ? `<b>${nTodo} à associer</b> (ou laisse « Ne pas suivre » pour les boissons, desserts…).` : ''} L'appli retiendra tes choix pour les prochains tickets.</p>
-    ${IMPORT.rows.map((r, k) => { const i = r.ing && ingOf(r.ing), first = !r.ing && (k === 0 || IMPORT.rows[k - 1].ing); return `${first ? '<h2>À associer ou ignorer</h2>' : ''}<div class="card" style="padding:10px 12px;margin-bottom:8px;${r.on ? '' : 'opacity:.6'}">
+      ${nGuess ? `<b>${nGuess} à vérifier</b> (en haut).` : ''} L'appli retiendra tes choix pour les prochains tickets.</p>
+    ${IMPORT.rows.map((r, k) => { const i = r.ing && ingOf(r.ing), first = !r.ing && (k === 0 || IMPORT.rows[k - 1].ing); return `${first ? '<h2>Non suivis</h2><p class="small mute" style="margin-top:-4px">Choisis un ingrédient pour les suivre, sinon ils seront ignorés.</p>' : ''}<div class="card" style="padding:10px 12px;margin-bottom:8px;${r.on ? '' : 'opacity:.6'}">
       <div class="row"><input type="checkbox" data-k="${k}" class="t-on" ${r.on ? 'checked' : ''} ${r.ing ? '' : 'disabled'}>
-        <div class="grow tiny mute" style="word-break:break-word">${esc(r.label)}${r.count > 1 ? ` <b>× ${r.count}</b>` : ''}${r.kg ? ` <b>${fr(r.kg, 3)} kg</b>` : ''}</div></div>
+        <div class="grow tiny mute" style="word-break:break-word">${esc(r.label)}${r.count > 1 ? ` <b>× ${r.count}</b>` : ''}${r.kg ? ` <b>${fr(r.kg, 3)} kg</b>` : ''}</div>
+        ${r.ing && r.how === 'devine' ? '<span class="badge warn">à vérifier</span>' : r.how === 'memo' && r.ing && !r.touched ? '<span class="badge ok">mémorisé</span>' : ''}</div>
       <select class="t-ing" data-k="${k}" style="margin-top:6px"><option value="">— Ne pas suivre —</option><option value="__new">+ Créer un ingrédient…</option>${opts}</select>
       ${r.ing ? (i.base ? `<div class="tiny mute" style="margin-top:6px">Ingrédient de base : toujours dispo, pas besoin de l'ajouter.</div>` : `<div class="row" style="margin-top:6px;gap:6px">
         <input type="number" inputmode="decimal" step="any" class="t-qty" data-k="${k}" value="${+(+r.qty).toFixed(1)}" style="flex:1">
@@ -921,7 +987,7 @@ function sheetImportReview() {
     sh.querySelector('#t-add').onclick = () => {
       let n = 0;
       for (const r of IMPORT.rows) {
-        S.ticketMap[ticketKey(r.label)] = r.ing || '__ignore';
+        if (r.touched) S.ticketMap[ticketKey(r.label)] = r.ing || '__skip';
         if (r.on && r.ing && r.qty > 0 && !ingOf(r.ing).base) { addStock(r.ing, r.qty, r.place); n++; }
       }
       IMPORT = null; save(); closeSheet(); UI.tab = 'stock'; render(); toast(`${n} produit${n > 1 ? 's' : ''} ajouté${n > 1 ? 's' : ''} au stock`);
@@ -929,7 +995,7 @@ function sheetImportReview() {
   });
 }
 function setRowIng(r, id) {
-  r.ing = id; if (!id) { r.on = false; r.qty = 0; return; }
+  r.ing = id; r.how = 'memo'; r.touched = true; if (!id) { r.on = false; r.qty = 0; return; }
   const i = ingOf(id); r.qty = ticketQty(id, r); r.on = !i.base;
   if (!/SURGEL/i.test(norm(r.cat))) r.place = i.place;
 }
