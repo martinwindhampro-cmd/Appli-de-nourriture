@@ -231,6 +231,7 @@ const blank = () => ({
   stock: [],        // { id, ing, qty, place }  ou plat en boîte : { id, dish: { name, n }, qty (portions), place }
   customIngs: [],   // ingrédients créés ou corrigés (même forme que INGREDIENTS)
   days: {},         // 'AAAA-MM-JJ' → [ { id, meal, name, kcal, p, g, l } ]
+  ticketMap: {},    // nom sur le ticket Super U → id d'ingrédient (ou '__ignore')
 });
 let S = blank();
 const UI = { tab: 'today', day: dateKey(), rFilter: 'all', rSearch: '', persons: null, sSearch: '' };
@@ -247,7 +248,7 @@ function save() {
   clearTimeout(saveT); setSync('busy');
   saveT = setTimeout(() => {
     db.collection('users').doc(currentUser.uid)
-      .set({ profile: S.profile, stock: S.stock, customIngs: S.customIngs, updatedAt: Date.now() })
+      .set({ profile: S.profile, stock: S.stock, customIngs: S.customIngs, ticketMap: S.ticketMap, updatedAt: Date.now() })
       .then(() => setSync('on')).catch(e => { console.error(e); setSync('err'); toast('Erreur de synchro : ' + e.code); });
   }, 600);
 }
@@ -279,7 +280,7 @@ function listenCloud() {
     if (!snap.exists) { save(); return; }   // premier lancement : on envoie ce qu'on a en local
     const d = snap.data();
     S.profile = Object.assign(blank().profile, d.profile || {});
-    S.stock = d.stock || []; S.customIngs = d.customIngs || [];
+    S.stock = d.stock || []; S.customIngs = d.customIngs || []; S.ticketMap = d.ticketMap || {};
     saveLocal(); setSync('on'); render();
   }, e => { console.error(e); setSync('err'); });
   listenDay();
@@ -425,7 +426,8 @@ function viewStock() {
   const items = S.stock.filter(it => !q || norm(it.dish ? it.dish.name : ingOf(it.ing).name).includes(q));
   let h = `<div class="row" style="margin-bottom:12px">
     <input type="search" id="s-search" placeholder="Chercher dans mon stock" value="${esc(UI.sSearch)}">
-    <button class="btn pri" data-act="add-stock" style="flex:none">+ Ajouter</button></div>`;
+    <button class="btn pri" data-act="add-stock" style="flex:none">+ Ajouter</button></div>
+  <button class="btn full" data-act="import-ticket" style="margin-bottom:12px">📄 Importer un ticket Super U</button>`;
   if (!S.stock.length) h += `<div class="card empty">Ton stock est vide.<br>Ajoute ce que tu as dans le frigo, le congélateur et le placard.<br><br>
     <button class="btn pri" data-act="add-stock">Ajouter des ingrédients</button></div>`;
   for (const [pl, lbl, emo] of PLACES) {
@@ -757,6 +759,181 @@ function sheetEatBox(id) {
   });
 }
 
+// --- Import d'un ticket Super U ---
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+async function loadPdfJs() {
+  if (window.pdfjsLib) return;
+  await new Promise((res, rej) => { const s = document.createElement('script'); s.src = PDFJS + 'pdf.min.js'; s.onload = res; s.onerror = () => rej(new Error('pdf.js')); document.head.appendChild(s); });
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
+}
+// Reconstitue les lignes du PDF (les morceaux de texte qui ont la même hauteur)
+async function pdfToText(file) {
+  await loadPdfJs();
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise, out = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const items = (await (await pdf.getPage(n)).getTextContent()).items.filter(i => i.str.trim());
+    const rows = [];
+    for (const it of items) {
+      const y = it.transform[5], x = it.transform[4];
+      let row = rows.find(r => Math.abs(r.y - y) < 2.5);
+      if (!row) rows.push(row = { y, parts: [] });
+      row.parts.push({ x, s: it.str });
+    }
+    rows.sort((a, b) => b.y - a.y).forEach(r => out.push(r.parts.sort((a, b) => a.x - b.x).map(p => p.s).join(' ').replace(/\s+/g, ' ').trim()));
+  }
+  return out.join('\n');
+}
+// Lit le texte du ticket : rayons, produits, prix, code TVA (11 = alimentaire, 13 = non alimentaire), quantités
+function parseTicket(text) {
+  const lines = text.split(/\r?\n/).map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  let i = lines.findIndex(l => /\*\*\*\s*VENTE\s*\*\*\*/i.test(l)); i = i < 0 ? 0 : i + 1;
+  const items = []; let cat = '';
+  for (; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^(Nombre de lignes|TOTAL\b|SOUS-TOTAL)/i.test(l)) break;
+    let m;
+    if ((m = l.match(/^(.+?)\s+(-?\d+,\d{2})\s*€?\s+(\d{1,2})$/))) items.push({ label: m[1].trim(), total: num(m[2]), tva: m[3], count: 1, cat });
+    else if ((m = l.match(/^(\d+)\s*x\s+[\d,]+\s*(EUR|€)/i)) && items.length) items[items.length - 1].count = +m[1];
+    else if ((m = l.match(/^([\d,]+)\s*kg\s*x/i)) && items.length) items[items.length - 1].kg = num(m[1]);
+    else if (!/\d,\d{2}/.test(l) && /^[A-Z0-9 .,'&()\/-]+$/.test(l)) cat = l;
+  }
+  return items;
+}
+// Contenance d'un produit à partir de son nom : « 4X150G », « 6X1L », « X10 », « 500G », « 1,25L », « BOITE 4/4 »
+function parseSize(label) {
+  const L = label.toUpperCase().replace(/(\d),(\d)/g, '$1.$2');
+  const toBase = (v, u) => v * ({ KG: 1000, G: 1, L: 1000, CL: 10, ML: 1 }[u]);
+  let m = L.match(/(\d+)\s*X\s*(\d+(?:\.\d+)?)\s*(KG|G|CL|ML|L)\b/);
+  if (m) return { size: +m[1] * toBase(+m[2], m[3]), pieces: +m[1] };
+  const all = [...L.matchAll(/(\d+(?:\.\d+)?)\s*(KG|G|CL|ML|L)\b/g)], pc = L.match(/\bX\s?(\d+)\b/);
+  const size = all.length ? toBase(+all[all.length - 1][1], all[all.length - 1][2]) : /\b4\/4\b/.test(L) ? 800 : null;
+  return { size, pieces: pc ? +pc[1] : null };
+}
+// Association automatique nom du ticket → ingrédient (l'ordre compte : le plus précis d'abord)
+const TICKET_RULES = [
+  [/LAIT.*COCO|COCO/, 'lait_coco'], [/AIGUILLETTE/, 'aiguillettes_poulet'], [/CUISSE.*POULET|HAUT.*CUISSE/, 'cuisse_poulet'], [/POULET|DINDE/, 'poulet'],
+  [/STK|STEAK.*HACH|HACH.*5\s?%/, s => /\b5\s?%/.test(s) ? 'steak_hache_5' : 'steak_hache_15'], [/HACHE/, 'viande_hachee_20'],
+  [/LARDON/, 'lardons'], [/JAMBON/, 'jambon'], [/SURIMI/, 'surimi'], [/THON/, 'thon'], [/BATONNETS? DE POISSON|PANE/, 'poisson_pane'], [/SAUMON/, 'saumon'],
+  [/^OEUFS?\b/, 'oeuf'], [/SKYR/, 'skyr'], [/FRO.*BL|FROMAGE BLANC|FROM\.BLC/, s => /\b0\s?%/.test(s) ? 'fromage_blanc_0' : 'fromage_blanc'],
+  [/GREC/, 'yaourt_grec'], [/^YRT|YAOURT/, 'yaourt'], [/EMMENT|RAPE/, 'emmental'], [/MOZZA/, 'mozzarella'], [/CHEVRE/, 'chevre'],
+  [/FONDU|CHEDDAR/, 'fromage_fondu'], [/LOIK|ST MORET|TARTINE|CARRE FRAIS/, 'fromage_frais'], [/REBLOCHON/, 'reblochon'], [/PARMESAN|PARMIG/, 'parmesan'], [/^BEURRE/, 'beurre'],
+  [/BRIDELICE|18\s?%/, 'creme_18'], [/CR\.?\s?LEG|CREME LEG|12\s?%/, 'creme_12'], [/CREME|^CR\./, 'creme_30'], [/^LAIT|LAIT UHT|ECREME|ECRE\./, 'lait'],
+  [/COQUILLETTE/, 'coquillettes'], [/MACARONI/, 'macaroni'], [/SPAGH/, 'spaghetti'], [/PENNE/, 'penne'], [/CAPELLINI/, 'capellini'], [/TAGLIATEL/, 'tagliatelles'],
+  [/GNOCCHI/, 'gnocchi'], [/\bPATES\b|FUSILLI|TORSADE|PAPILLON/, 'pates'], [/\bRIZ\b/, 'riz'], [/COUSCOUS|SEMOULE/, 'semoule'],
+  [/NOISETTE/, 'pommes_noisettes'], [/FRITES/, 'frites_four'], [/POMMES? DE TERRE|\bPDT\b/, 'pdt'],
+  [/TORTILLA/, 'tortilla'], [/HAMBURGER|BURGER|BUNS/, 'pain_burger'], [/PAIN DE MIE|\bMIE\b/, 'pain_mie'], [/BAGUETTE|^PAIN\b/, 'pain'],
+  [/FLOCON|AVOINE/, 'flocons_avoine'], [/MUESLI/, 'muesli'], [/FROSTIES|^CER\.|CEREALE|CORN ?FLAKES|CHOCAPIC|SPECIAL K/, 'cereales'], [/FARINE/, 'farine'],
+  [/FEUILLET/, 'pate_feuilletee'], [/BRISEE/, 'pate_brisee'],
+  [/TIKKA/, 'sauce_tikka'], [/FAJITA.*SEASON|SEASON|EPICE/, 'epices'], [/FAJITA|SALSA/, 'sauce_fajita'], [/SCE POIVRE|SAUCE POIVRE/, 'sauce_poivre'],
+  [/MAYO/, 'mayonnaise'], [/KETCHUP/, 'ketchup'], [/WHEY|PROTEIN/, 'whey'], [/CHOCOLAT.*(NR|NOIR)|PATISSIER/, 'chocolat_noir'], [/^MIEL/, 'miel'],
+  [/POIVRON/, (s, c) => /SURGEL/.test(c) ? 'poivrons_surgeles' : 'poivron'], [/OIGNON/, 'oignon'],
+  [/CONCASS/, 'tomates_concassees'], [/COULIS|SCE TOMATE|SAUCE TOMATE|PASSATA/, 'sauce_tomate'], [/TOMATE/, 'tomate'],
+  [/CHAMP/, (s, c) => /CONSERVE/.test(c) ? 'champignons_boite' : 'champignons'], [/\bMAIS\b/, 'mais'], [/PETITS? POIS/, 'petits_pois'],
+  [/HARICOTS? ROUGE/, 'haricots_rouges'], [/HARICOTS? VERT/, 'haricots_verts'], [/POIS CHICHE/, 'pois_chiches'], [/COURGETTE/, 'courgette'],
+  [/CAROTTE/, 'carotte'], [/SALADE|LAITUE|MACHE|ROQUETTE/, 'salade'], [/BROCOLI/, 'brocoli'], [/EPINARD/, 'epinards'],
+  [/BANANE/, 'banane'], [/^POMMES?\b/, 'pomme'], [/FRUITS ROUGES|FRAMBOISE|MYRTILLE/, 'fruits_rouges'],
+  [/HUILE/, 'huile'], [/^SUCRE/, 'sucre'], [/MOUTARDE/, 'moutarde'], [/SOJA/, 'sauce_soja'],
+];
+const ticketKey = label => label.toUpperCase().replace(/\s+/g, ' ').trim();
+function guessIng(label, cat) {
+  const k = ticketKey(label);
+  if (S.ticketMap[k]) return S.ticketMap[k];
+  const s = norm(label).toUpperCase(), c = norm(cat).toUpperCase();
+  if (/SUCRE/.test(c) && /SURGEL/.test(c)) return '';   // glaces, viennoiseries surgelées
+  for (const [re, id] of TICKET_RULES) if (re.test(s)) return typeof id === 'function' ? id(s, c) : id;
+  return '';
+}
+function ticketQty(ingId, it) {
+  const i = ingOf(ingId), pk = parseSize(it.label), n = it.count || 1;
+  if (it.kg) return i.unit === 'pc' && i.pw ? Math.round(it.kg * 1000 / i.pw) : it.kg * 1000;
+  if (i.unit === 'pc') return pk.pieces ? pk.pieces * n : pk.size && i.pw ? Math.max(1, Math.round(pk.size / i.pw)) * n : n;
+  if (pk.size) return pk.size * n;
+  if (pk.pieces && i.pw) return pk.pieces * i.pw * n;
+  return i.pw ? i.pw * n : 0;
+}
+let IMPORT = null;   // { rows: [ { label, cat, count, ing, qty, place, on } ], skipped: [] }
+function buildImport(text) {
+  const items = parseTicket(text);
+  const food = items.filter(it => it.tva !== '13' && it.total > 0), skipped = items.filter(it => it.tva === '13');
+  const rows = food.map(it => {
+    const ing = guessIng(it.label, it.cat), i = ing && ingOf(ing);
+    const ignored = S.ticketMap[ticketKey(it.label)] === '__ignore';
+    return { ...it, ing: ignored ? '' : ing, qty: ing && !ignored ? ticketQty(ing, it) : 0,
+      place: /SURGEL/i.test(norm(it.cat)) ? 'congel' : i ? i.place : 'frigo', on: !!ing && !ignored && !(i && i.base) };
+  });
+  const rank = r => r.on ? 0 : r.ing ? 1 : 2;   // reconnus d'abord, puis ingrédients de base, puis à associer
+  rows.sort((a, b) => rank(a) - rank(b));
+  IMPORT = { rows, skipped };
+}
+function sheetImport() {
+  openSheet(`${sheetHead('Importer un ticket')}
+    <p class="small mute" style="margin-top:0">Ticket de caisse Super U en PDF (livraison ou magasin). L'appli reconnaît les produits, les quantités et le rangement ; tu vérifies avant d'ajouter.</p>
+    <label class="btn pri full">📄 Choisir le PDF du ticket<input type="file" accept="application/pdf,.pdf" id="t-file" hidden></label>
+    <div id="t-msg" class="small" style="margin-top:10px"></div>
+    <details style="margin-top:14px"><summary class="small" style="cursor:pointer">Pas de PDF ? Coller le texte du ticket</summary>
+      <textarea id="t-text" rows="8" style="width:100%;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card)" placeholder="Colle ici le contenu du ticket ou de l'e-mail de commande"></textarea>
+      <button class="btn full" id="t-go" style="margin-top:8px">Analyser le texte</button></details>`, sh => {
+    const done = text => {
+      buildImport(text);
+      if (!IMPORT.rows.length) { sh.querySelector('#t-msg').innerHTML = '<span style="color:var(--bad)">Aucun produit trouvé. Est-ce bien un ticket Super U ?</span>'; return; }
+      sheetImportReview();
+    };
+    sh.querySelector('#t-file').addEventListener('change', async e => {
+      const f = e.target.files[0]; if (!f) return;
+      sh.querySelector('#t-msg').textContent = 'Lecture du ticket…';
+      try { done(await pdfToText(f)); } catch (err) { console.error(err); sh.querySelector('#t-msg').innerHTML = '<span style="color:var(--bad)">Impossible de lire ce PDF. Essaie de coller le texte.</span>'; }
+    });
+    sh.querySelector('#t-go').onclick = () => done(sh.querySelector('#t-text').value);
+  });
+}
+function sheetImportReview() {
+  const prev = document.querySelector('.sheet'), keep = prev && prev.querySelector('#t-add') ? prev.scrollTop : 0;
+  const opts = allIngs().map(i => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('');
+  const nOn = IMPORT.rows.filter(r => r.on && r.ing && r.qty > 0).length, nTodo = IMPORT.rows.filter(r => !r.ing).length;
+  openSheet(`${sheetHead('Vérifier le ticket')}
+    <p class="small mute" style="margin-top:0">${IMPORT.rows.length} produits alimentaires${IMPORT.skipped.length ? ` · ${IMPORT.skipped.length} non alimentaires ignorés` : ''}.
+      ${nTodo ? `<b>${nTodo} à associer</b> (ou laisse « Ne pas suivre » pour les boissons, desserts…).` : ''} L'appli retiendra tes choix pour les prochains tickets.</p>
+    ${IMPORT.rows.map((r, k) => { const i = r.ing && ingOf(r.ing), first = !r.ing && (k === 0 || IMPORT.rows[k - 1].ing); return `${first ? '<h2>À associer ou ignorer</h2>' : ''}<div class="card" style="padding:10px 12px;margin-bottom:8px;${r.on ? '' : 'opacity:.6'}">
+      <div class="row"><input type="checkbox" data-k="${k}" class="t-on" ${r.on ? 'checked' : ''} ${r.ing ? '' : 'disabled'}>
+        <div class="grow tiny mute" style="word-break:break-word">${esc(r.label)}${r.count > 1 ? ` <b>× ${r.count}</b>` : ''}${r.kg ? ` <b>${fr(r.kg, 3)} kg</b>` : ''}</div></div>
+      <select class="t-ing" data-k="${k}" style="margin-top:6px"><option value="">— Ne pas suivre —</option><option value="__new">+ Créer un ingrédient…</option>${opts}</select>
+      ${r.ing ? (i.base ? `<div class="tiny mute" style="margin-top:6px">Ingrédient de base : toujours dispo, pas besoin de l'ajouter.</div>` : `<div class="row" style="margin-top:6px;gap:6px">
+        <input type="number" inputmode="decimal" step="any" class="t-qty" data-k="${k}" value="${+(+r.qty).toFixed(1)}" style="flex:1">
+        <span class="small mute" style="flex:none">${i.unit === 'pc' ? 'pièce(s)' : i.unit}</span>
+        <select class="t-place" data-k="${k}" style="flex:1.3">${PLACES.map(([pk, pl]) => `<option value="${pk}" ${r.place === pk ? 'selected' : ''}>${pl.split(' ')[0]}</option>`).join('')}</select></div>`) : ''}
+    </div>`; }).join('')}
+    <button class="btn pri full" id="t-add" style="position:sticky;bottom:0" ${nOn ? '' : 'disabled'}>Ajouter ${nOn} produit${nOn > 1 ? 's' : ''} au stock</button>`, sh => {
+    sh.querySelectorAll('.t-ing').forEach(sel => { const r = IMPORT.rows[sel.dataset.k]; sel.value = r.ing || ''; });
+    sh.scrollTop = keep;
+    sh.addEventListener('change', e => {
+      const t = e.target, r = IMPORT.rows[t.dataset.k]; if (!r) return;
+      if (t.classList.contains('t-on')) { r.on = t.checked; return sheetImportReview(); }
+      if (t.classList.contains('t-qty')) { r.qty = num(t.value); return; }
+      if (t.classList.contains('t-place')) { r.place = t.value; return; }
+      if (t.classList.contains('t-ing')) {
+        if (t.value === '__new') {
+          const pretty = r.label.toLowerCase().replace(/\b\d.*$/, '').replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
+          return sheetIngredient(null, pretty.charAt(0).toUpperCase() + pretty.slice(1), created => { setRowIng(r, created.id); sheetImportReview(); });
+        }
+        setRowIng(r, t.value); sheetImportReview();
+      }
+    });
+    sh.querySelector('#t-add').onclick = () => {
+      let n = 0;
+      for (const r of IMPORT.rows) {
+        S.ticketMap[ticketKey(r.label)] = r.ing || '__ignore';
+        if (r.on && r.ing && r.qty > 0 && !ingOf(r.ing).base) { addStock(r.ing, r.qty, r.place); n++; }
+      }
+      IMPORT = null; save(); closeSheet(); UI.tab = 'stock'; render(); toast(`${n} produit${n > 1 ? 's' : ''} ajouté${n > 1 ? 's' : ''} au stock`);
+    };
+  });
+}
+function setRowIng(r, id) {
+  r.ing = id; if (!id) { r.on = false; r.qty = 0; return; }
+  const i = ingOf(id); r.qty = ticketQty(id, r); r.on = !i.base;
+  if (!/SURGEL/i.test(norm(r.cat))) r.place = i.place;
+}
+
 /* ============================== ÉVÉNEMENTS ============================== */
 document.addEventListener('click', e => {
   const tab = e.target.closest('#tabs button');
@@ -772,6 +949,7 @@ document.addEventListener('click', e => {
     case 'eat-box': return sheetEatBox(id);
     case 'go-ideas': UI.tab = 'recipes'; UI.rFilter = 'ok'; return render();
     case 'add-stock': return sheetAddStock();
+    case 'import-ticket': return sheetImport();
     case 'edit-stock': return sheetEditStock(id);
     case 'qty': {
       const it = S.stock.find(x => x.id === id); if (!it) return;

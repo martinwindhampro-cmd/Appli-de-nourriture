@@ -1,6 +1,6 @@
 # Mes repas
 
-Appli perso : stock (frigo, congélateur, placard), recettes proposées selon ce que j'ai, suivi calories et macros.
+Appli perso : stock (frigo, congélateur, placard), import du ticket Super U (PDF), recettes proposées selon ce que j'ai, suivi calories et macros.
 
 Fichiers : `index.html` (l'appli), `data.js` (ingrédients et recettes), `sw.js` (hors ligne), icônes et manifeste.
 

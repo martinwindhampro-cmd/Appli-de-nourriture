@@ -2,9 +2,9 @@
    • La page et data.js : réseau d'abord → toujours la dernière version publiée ; copie de secours hors ligne.
    • Bibliothèques Firebase et icônes : copie locale d'abord (leurs adresses ont un numéro de version).
    • Les données (Firestore) ne passent pas par ici : Firebase gère lui-même le hors-ligne. */
-const V = 'repas-v1';
+const V = 'repas-v2';
 const CORE = ['./', './index.html', './data.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
-const LIBS = /^https:\/\/www\.gstatic\.com\/firebasejs\//;
+const LIBS = /^https:\/\/(www\.gstatic\.com\/firebasejs\/|cdnjs\.cloudflare\.com\/ajax\/libs\/pdf\.js\/)/;
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
