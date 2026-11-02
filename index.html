@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mes repas</title>
+<meta name="description" content="Mon stock, mes recettes et mon suivi nutritionnel">
+<meta name="theme-color" content="#0F766E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mes repas">
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+<script src="data.js"></script>
+<style>
+:root {
+  --bg: #F4F6F5; --card: #FFFFFF; --soft: #EEF2F1; --ink: #13201D; --mute: #5E6B68; --line: #E1E7E5;
+  --acc: #0F766E; --acc-d: #0B5E58; --acc-s: #E0F2EF; --acc-t: #FFFFFF;
+  --ok: #047857; --ok-s: #E7F6EF; --warn: #8A4B00; --warn-s: #FFF4E5; --bad: #B42318; --bad-s: #FDECEA;
+  --kcal: #0F766E; --p: #B45309; --g: #2563EB; --l: #9333EA;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  --r: 14px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1513; --card: #16201E; --soft: #1D2927; --ink: #E7EFED; --mute: #9AA9A5; --line: #26332F;
+    --acc: #2DD4BF; --acc-d: #5EEAD4; --acc-s: #12312D; --acc-t: #062420;
+    --ok: #34D399; --ok-s: #0F2A21; --warn: #FBBF24; --warn-s: #2E2410; --bad: #F87171; --bad-s: #321716;
+    --kcal: #2DD4BF; --p: #F59E0B; --g: #60A5FA; --l: #C084FC;
+    --shadow: none; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1513; --card: #16201E; --soft: #1D2927; --ink: #E7EFED; --mute: #9AA9A5; --line: #26332F;
+  --acc: #2DD4BF; --acc-d: #5EEAD4; --acc-s: #12312D; --acc-t: #062420;
+  --ok: #34D399; --ok-s: #0F2A21; --warn: #FBBF24; --warn-s: #2E2410; --bad: #F87171; --bad-s: #321716;
+  --kcal: #2DD4BF; --p: #F59E0B; --g: #60A5FA; --l: #C084FC;
+  --shadow: none; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--acc); }
+.wrap { max-width: 720px; margin: 0 auto; padding: 0 16px calc(96px + env(safe-area-inset-bottom)); }
+header.top { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: calc(10px + env(safe-area-inset-top)) 0 10px; display: flex; align-items: center; gap: 10px; }
+header.top h1 { font-size: 20px; margin: 0; flex: 1; letter-spacing: -.01em; }
+.sync { font-size: 12px; color: var(--mute); display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mute); }
+.dot.on { background: var(--ok); } .dot.busy { background: var(--warn); }
+
+nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--card); border-top: 1px solid var(--line); display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); }
+nav.tabs .in { display: flex; width: 100%; max-width: 720px; }
+nav.tabs button { flex: 1; background: none; border: 0; padding: 8px 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; color: var(--mute); cursor: pointer; }
+nav.tabs button svg { width: 24px; height: 24px; }
+nav.tabs button.on { color: var(--acc); font-weight: 600; }
+
+.card { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 14px; margin-bottom: 12px; border: 1px solid var(--line); }
+.row { display: flex; align-items: center; gap: 10px; }
+.grow { flex: 1; min-width: 0; }
+.mute { color: var(--mute); }
+.small { font-size: 13px; }
+.tiny { font-size: 12px; }
+h2 { font-size: 16px; margin: 18px 0 8px; }
+h3 { font-size: 15px; margin: 0 0 6px; }
+.btn { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 9px 14px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; justify-content: center; }
+.btn.pri { background: var(--acc); border-color: var(--acc); color: var(--acc-t); }
+.btn.pri:disabled { opacity: .5; cursor: default; }
+.btn.ghost { background: none; border-color: transparent; color: var(--acc); padding: 6px 8px; }
+.btn.danger { color: var(--bad); }
+.btn.full { width: 100%; }
+.btn.sm { padding: 5px 10px; font-size: 13px; }
+.icon-btn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; flex: none; }
+input[type=text], input[type=number], input[type=email], input[type=password], input[type=search], select {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); outline: none; min-width: 0;
+}
+input:focus, select:focus { border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-s); }
+label.f { display: block; font-size: 13px; color: var(--mute); margin: 10px 0 4px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.grid4 input { padding: 10px 4px; text-align: center; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; border: 1px solid var(--line); background: var(--card); padding: 6px 12px; border-radius: 999px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.chip.on { background: var(--acc); border-color: var(--acc); color: var(--acc-t); }
+.badge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--mute); white-space: nowrap; }
+.badge.ok { background: var(--ok-s); color: var(--ok); }
+.badge.warn { background: var(--warn-s); color: var(--warn); }
+.badge.bad { background: var(--bad-s); color: var(--bad); }
+.seg { display: flex; background: var(--soft); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { flex: 1; border: 0; background: none; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.seg button.on { background: var(--card); box-shadow: var(--shadow); font-weight: 600; }
+.stepper { display: inline-flex; align-items: center; gap: 8px; }
+.stepper b { min-width: 24px; text-align: center; }
+.empty { text-align: center; color: var(--mute); padding: 26px 10px; }
+
+/* Aujourd'hui */
+.daynav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.daynav .t { flex: 1; text-align: center; font-weight: 600; }
+.kcal-big { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.kcal-big .v { font-size: 30px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.bar { height: 8px; background: var(--soft); border-radius: 99px; overflow: hidden; margin-top: 6px; }
+.bar > i { display: block; height: 100%; border-radius: 99px; }
+.macros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+.macros .k { font-size: 12px; color: var(--mute); }
+.macros .n { font-weight: 600; font-variant-numeric: tabular-nums; }
+.entry { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.entry:first-of-type { border-top: 0; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* Stock */
+.item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.item:first-child { border-top: 0; }
+.item .name { cursor: pointer; }
+.place-h { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
+.place-h h3 { margin: 0; flex: 1; }
+
+/* Recettes */
+.rcard { cursor: pointer; }
+.rcard .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.miss { color: var(--warn); font-size: 13px; margin-top: 6px; }
+.ing-line { display: flex; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); align-items: center; }
+.ing-line:first-child { border-top: 0; }
+.ico { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; flex: none; }
+.ico.ok { background: var(--ok-s); color: var(--ok); }
+.ico.no { background: var(--bad-s); color: var(--bad); }
+.ico.base { background: var(--soft); color: var(--mute); }
+ol.steps { padding-left: 20px; margin: 6px 0 0; }
+ol.steps li { margin-bottom: 6px; }
+
+/* Fiche (bottom sheet) */
+.backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--bg); width: 100%; max-width: 720px; max-height: 92vh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 8px 16px calc(20px + env(safe-area-inset-bottom)); animation: up .18s ease-out; }
+@keyframes up { from { transform: translateY(30px); } to { transform: none; } }
+.sheet .grab { width: 40px; height: 4px; border-radius: 99px; background: var(--line); margin: 4px auto 10px; }
+.sheet-h { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sheet-h h2 { margin: 0; flex: 1; font-size: 18px; }
+.results { max-height: 42vh; overflow-y: auto; }
+.res { padding: 10px 4px; border-top: 1px solid var(--line); cursor: pointer; display: flex; gap: 10px; align-items: center; }
+.res:hover { background: var(--soft); }
+.toast { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; z-index: 40; font-size: 14px; max-width: calc(100% - 32px); }
+.login { max-width: 380px; margin: 10vh auto 0; }
+.banner { background: var(--warn-s); color: var(--warn); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+@media (min-width: 640px) { .backdrop { align-items: center; } .sheet { border-radius: 18px; max-height: 86vh; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 id="title">Aujourd'hui</h1>
+    <div class="sync" id="sync"></div>
+  </header>
+  <main id="view"></main>
+</div>
+<nav class="tabs" id="tabs"><div class="in">
+  <button data-tab="today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Aujourd'hui</button>
+  <button data-tab="stock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M5 10h14M9 6v1M9 13v3"/></svg>Stock</button>
+  <button data-tab="recipes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h16a8 8 0 0 1-16 0z"/><path d="M8 7c0-1.5 1-2 1-3M12 7c0-1.5 1-2 1-3M16 7c0-1.5 1-2 1-3"/></svg>Recettes</button>
+  <button data-tab="profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Profil</button>
+</div></nav>
+<div id="sheet-root"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   MES REPAS — stock, recettes et suivi nutritionnel
+   Organisation :
+     1. Firebase (facultatif)   4. Calculs (stock, recettes, nutrition)
+     2. Outils                  5. Écrans : Aujourd'hui · Stock · Recettes · Profil
+     3. Données & sauvegarde    6. Fiches · 7. Démarrage
+   ===================================================================== */
+
+/* ============================== 1. FIREBASE ==============================
+   Laisse FIREBASE_CONFIG à null pour utiliser l'appli en local (données sur cet appareil).
+   Pour synchroniser téléphone et ordinateur : crée un projet Firebase, active
+   « Authentication → E-mail/Mot de passe » et « Firestore », puis colle ici la config web. */
+const FIREBASE_CONFIG = null;
+
+let auth = null, db = null, currentUser = null;
+if (FIREBASE_CONFIG && window.firebase) {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  auth = firebase.auth(); auth.languageCode = 'fr';
+  db = firebase.firestore();
+  db.enablePersistence({ synchronizeTabs: true }).catch(e => console.warn('Persistance hors-ligne indisponible :', e.code));
+}
+const CLOUD = !!db;
+
+/* ============================== 2. OUTILS ============================== */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const num = v => { const n = parseFloat(String(v ?? '').replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : 0; };
+const r0 = v => Math.round(v);
+const fr = (v, d = 0) => Number(v).toLocaleString('fr-FR', { maximumFractionDigits: d });
+const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const pad = n => String(n).padStart(2, '0');
+const dateKey = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const shiftDay = (k, n) => { const [y, m, d] = k.split('-').map(Number); return dateKey(new Date(y, m - 1, d + n)); };
+const dayLabel = k => {
+  const t = dateKey();
+  if (k === t) return "Aujourd'hui";
+  if (k === shiftDay(t, -1)) return 'Hier';
+  if (k === shiftDay(t, 1)) return 'Demain';
+  const [y, m, d] = k.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+};
+const MEALS = [['pdj', 'Petit-déjeuner'], ['dej', 'Déjeuner'], ['diner', 'Dîner'], ['collation', 'Collation']];
+const MEAL_NAME = Object.fromEntries(MEALS);
+const defaultMeal = () => { const h = new Date().getHours() + new Date().getMinutes() / 60; return h < 10.5 ? 'pdj' : h < 15 ? 'dej' : h < 18 ? 'collation' : 'diner'; };
+const PLACES = [['frigo', 'Frigo', '🧊'], ['congel', 'Congélateur', '❄️'], ['placard', 'Placard (sec)', '🥫']];
+const PLACE_NAME = Object.fromEntries(PLACES.map(p => [p[0], p[1]]));
+const RTYPES = { pdj: 'Petit-déj', plat: 'Plat', collation: 'Collation' };
+let toastT;
+const toast = msg => { let t = document.querySelector('.toast'); if (!t) { t = document.createElement('div'); t.className = 'toast'; document.body.appendChild(t); } t.textContent = msg; clearTimeout(toastT); toastT = setTimeout(() => t.remove(), 2600); };
+
+/* ============================== 3. DONNÉES & SAUVEGARDE ============================== */
+const LS_KEY = 'repas-v1';
+const blank = () => ({
+  profile: { sex: 'h', age: 30, height: 175, weight: 75, activity: 1.55, goal: 'maintien', persons: 1, custom: null },
+  stock: [],        // { id, ing, qty, place }  ou plat en boîte : { id, dish: { name, n }, qty (portions), place }
+  customIngs: [],   // ingrédients créés ou corrigés (même forme que INGREDIENTS)
+  days: {},         // 'AAAA-MM-JJ' → [ { id, meal, name, kcal, p, g, l } ]
+});
+let S = blank();
+const UI = { tab: 'today', day: dateKey(), rFilter: 'all', rSearch: '', persons: null, sSearch: '' };
+
+function loadLocal() {
+  try { const raw = localStorage.getItem(LS_KEY); if (raw) S = Object.assign(blank(), JSON.parse(raw)); } catch (e) { console.warn(e); }
+}
+function saveLocal() { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) { console.warn(e); } }
+
+let saveT = null, syncState = 'idle';
+function save() {
+  saveLocal();
+  if (!CLOUD || !currentUser) return;
+  clearTimeout(saveT); setSync('busy');
+  saveT = setTimeout(() => {
+    db.collection('users').doc(currentUser.uid)
+      .set({ profile: S.profile, stock: S.stock, customIngs: S.customIngs, updatedAt: Date.now() })
+      .then(() => setSync('on')).catch(e => { console.error(e); setSync('err'); toast('Erreur de synchro : ' + e.code); });
+  }, 600);
+}
+// Journal : chaque ajout / suppression va directement dans le document du jour (sans écraser l'autre appareil)
+function addEntry(day, e) {
+  (S.days[day] ||= []).push(e); saveLocal();
+  if (CLOUD && currentUser) db.collection('users').doc(currentUser.uid).collection('days').doc(day)
+    .set({ entries: firebase.firestore.FieldValue.arrayUnion(e) }, { merge: true }).catch(err => toast('Erreur : ' + err.code));
+}
+function removeEntry(day, id) {
+  const list = S.days[day] || [], e = list.find(x => x.id === id); if (!e) return;
+  S.days[day] = list.filter(x => x.id !== id); saveLocal();
+  if (CLOUD && currentUser) db.collection('users').doc(currentUser.uid).collection('days').doc(day)
+    .update({ entries: firebase.firestore.FieldValue.arrayRemove(e) }).catch(err => toast('Erreur : ' + err.code));
+}
+function setSync(s) {
+  syncState = s;
+  $('sync').innerHTML = !CLOUD ? '<span class="dot"></span>Local'
+    : s === 'busy' ? '<span class="dot busy"></span>Synchro…'
+    : s === 'err' ? '<span class="dot" style="background:var(--bad)"></span>Erreur'
+    : '<span class="dot on"></span>Synchronisé';
+}
+
+let unsubMain = null, unsubDay = null;
+function listenCloud() {
+  const ref = db.collection('users').doc(currentUser.uid);
+  unsubMain = ref.onSnapshot(snap => {
+    if (snap.metadata.hasPendingWrites) return;
+    if (!snap.exists) { save(); return; }   // premier lancement : on envoie ce qu'on a en local
+    const d = snap.data();
+    S.profile = Object.assign(blank().profile, d.profile || {});
+    S.stock = d.stock || []; S.customIngs = d.customIngs || [];
+    saveLocal(); setSync('on'); render();
+  }, e => { console.error(e); setSync('err'); });
+  listenDay();
+}
+function listenDay() {
+  if (!CLOUD || !currentUser) return;
+  if (unsubDay) unsubDay();
+  const day = UI.day;
+  unsubDay = db.collection('users').doc(currentUser.uid).collection('days').doc(day).onSnapshot(snap => {
+    if (snap.metadata.hasPendingWrites) return;
+    S.days[day] = snap.exists ? (snap.data().entries || []) : (S.days[day] || []);
+    saveLocal(); if (UI.tab === 'today') render();
+  });
+}
+
+/* ============================== 4. CALCULS ============================== */
+// --- Ingrédients ---
+function ingMap() {
+  const m = {}; for (const i of INGREDIENTS) m[i.id] = i;
+  for (const i of S.customIngs) m[i.id] = Object.assign({}, m[i.id] || {}, i);
+  return m;
+}
+let ING = ingMap();
+const ingOf = id => ING[id] || { id, name: id, unit: 'g', place: 'placard', n: { kcal: 0, p: 0, g: 0, l: 0 } };
+const allIngs = () => Object.values(ING).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+const unitLbl = u => u === 'pc' ? '' : u;
+
+function fmtQty(ingId, q) {
+  const i = ingOf(ingId);
+  if (i.unit === 'pc') {
+    const fr4 = { 0.25: '¼', 0.5: '½', 0.75: '¾' }, w = Math.floor(q + 1e-9), f = Math.round((q - w) * 4) / 4;
+    const s = f > 0 && fr4[f] ? (w ? w + ' ' : '') + fr4[f] : fr(q, 1);
+    return s + (q > 1 ? ' pièces' : ' pièce');
+  }
+  let s = q >= 1000 ? fr(q / 1000, 2) + (i.unit === 'ml' ? ' L' : ' kg') : fr(q, q < 10 ? 1 : 0) + ' ' + i.unit;
+  if (i.pw && i.unit === 'g' && q >= i.pw * 0.75) s += ` <span class="mute">(≈${fr(q / i.pw, 1)})</span>`;
+  return s;
+}
+// Valeurs nutritionnelles d'une quantité d'ingrédient
+function nutrOf(ingId, q) {
+  const i = ingOf(ingId), f = i.unit === 'pc' ? q * (i.pw || 100) / 100 : q / 100;
+  return { kcal: i.n.kcal * f, p: i.n.p * f, g: i.n.g * f, l: i.n.l * f };
+}
+const addN = (a, b, k = 1) => ({ kcal: a.kcal + b.kcal * k, p: a.p + b.p * k, g: a.g + b.g * k, l: a.l + b.l * k });
+const ZERO = () => ({ kcal: 0, p: 0, g: 0, l: 0 });
+
+// --- Stock ---
+const matches = (it, ingId) => !it.dish && (it.ing === ingId || ingOf(it.ing).fam === ingId);
+const available = ingId => S.stock.filter(it => matches(it, ingId)).reduce((s, it) => s + it.qty, 0);
+const PLACE_ORDER = { frigo: 0, congel: 1, placard: 2 };
+function deduct(ingId, qty) {
+  const items = S.stock.filter(it => matches(it, ingId))
+    .sort((a, b) => (a.ing === ingId ? 0 : 1) - (b.ing === ingId ? 0 : 1) || PLACE_ORDER[a.place] - PLACE_ORDER[b.place]);
+  let left = qty;
+  for (const it of items) { if (left <= 0) break; const t = Math.min(it.qty, left); it.qty -= t; left -= t; }
+  S.stock = S.stock.filter(it => it.qty > 1e-6);
+}
+function addStock(ingId, qty, place) {
+  const ex = S.stock.find(it => !it.dish && it.ing === ingId && it.place === place);
+  if (ex) ex.qty += qty; else S.stock.push({ id: uid(), ing: ingId, qty, place });
+}
+
+// --- Recettes ---
+const allRecipes = () => RECIPES;
+// État d'une recette pour N personnes : ingrédients présents / manquants, valeurs par portion
+function recipeState(r, persons) {
+  let need = 0, have = 0, n = ZERO();
+  const lines = r.ings.map(x => {
+    const i = ingOf(x.ing), q = x.q * persons, av = i.base ? Infinity : available(x.ing);
+    const ok = i.base || av >= q - 1e-6, partial = !ok && av > 0;
+    const used = !x.opt || av > 0;   // un facultatif ne compte que si on l'a
+    if (used) n = addN(n, nutrOf(x.ing, x.q));
+    if (!x.opt && !i.base) { need++; if (ok) have++; }
+    return { ...x, i, q, av, ok, partial, base: !!i.base, used };
+  });
+  const missing = lines.filter(l => !l.opt && !l.ok);
+  return { lines, missing, ratio: need ? have / need : 1, ok: missing.length === 0, n };
+}
+
+// --- Profil & objectifs ---
+const GOALS = { perte: ['Perte de poids', -0.15, 2.0], maintien: ['Maintien', 0, 1.6], masse: ['Prise de masse', 0.10, 1.8] };
+const ACTIVITIES = [[1.2, 'Sédentaire (peu ou pas de sport)'], [1.375, 'Légère (1–3 séances / semaine)'], [1.55, 'Modérée (3–5 séances / semaine)'], [1.725, 'Élevée (6–7 séances / semaine)'], [1.9, 'Très élevée (travail physique + sport)']];
+function targets(p = S.profile) {
+  const bmr = 10 * p.weight + 6.25 * p.height - 5 * p.age + (p.sex === 'f' ? -161 : 5);   // Mifflin-St Jeor
+  const tdee = bmr * p.activity, [, adj, pkg] = GOALS[p.goal] || GOALS.maintien;
+  const kcal = tdee * (1 + adj), prot = pkg * p.weight, lip = kcal * 0.30 / 9, glu = Math.max(0, (kcal - prot * 4 - lip * 9) / 4);
+  const auto = { kcal: r0(kcal), p: r0(prot), g: r0(glu), l: r0(lip) };
+  return { bmr: r0(bmr), tdee: r0(tdee), auto, t: p.custom ? Object.assign({}, auto, p.custom) : auto };
+}
+const dayTotals = day => (S.days[day] || []).reduce((a, e) => addN(a, e), ZERO());
+
+/* ============================== 5. ÉCRANS ============================== */
+function render() {
+  ING = ingMap();
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === UI.tab));
+  $('title').textContent = { today: "Aujourd'hui", stock: 'Mon stock', recipes: 'Recettes', profile: 'Profil' }[UI.tab];
+  const v = $('view');
+  v.innerHTML = { today: viewToday, stock: viewStock, recipes: viewRecipes, profile: viewProfile }[UI.tab]();
+}
+
+/* ----- Aujourd'hui ----- */
+function viewToday() {
+  const { t } = targets(), tot = dayTotals(UI.day), left = t.kcal - tot.kcal;
+  const pct = (v, m) => Math.min(100, m ? v / m * 100 : 0);
+  const macro = (k, lbl, col) => `<div><div class="k">${lbl}</div><div class="n">${r0(tot[k])} <span class="mute small">/ ${t[k]} g</span></div>
+    <div class="bar"><i style="width:${pct(tot[k], t[k])}%;background:${col}"></i></div>
+    <div class="tiny mute">${t[k] - tot[k] >= 0 ? 'reste ' + r0(t[k] - tot[k]) + ' g' : '+' + r0(tot[k] - t[k]) + ' g'}</div></div>`;
+  const entries = S.days[UI.day] || [];
+  const boxes = S.stock.filter(it => it.dish);
+  let h = `
+  <div class="daynav">
+    <button class="icon-btn" data-act="day" data-n="-1" aria-label="Jour précédent">‹</button>
+    <div class="t">${esc(dayLabel(UI.day))}</div>
+    <button class="icon-btn" data-act="day" data-n="1" aria-label="Jour suivant">›</button>
+  </div>
+  <div class="card">
+    <div class="kcal-big"><span class="v">${fr(r0(tot.kcal))}</span><span class="mute">/ ${fr(t.kcal)} kcal</span></div>
+    <div class="bar" style="height:10px"><i style="width:${pct(tot.kcal, t.kcal)}%;background:${left < 0 ? 'var(--bad)' : 'var(--kcal)'}"></i></div>
+    <div class="small" style="margin-top:6px;color:${left < 0 ? 'var(--bad)' : 'var(--mute)'}">${left >= 0 ? `Il te reste <b>${fr(r0(left))} kcal</b>` : `Dépassement de ${fr(r0(-left))} kcal`}</div>
+    <div class="macros">${macro('p', 'Protéines', 'var(--p)')}${macro('g', 'Glucides', 'var(--g)')}${macro('l', 'Lipides', 'var(--l)')}</div>
+  </div>
+  <div class="row" style="gap:8px;margin-bottom:12px">
+    <button class="btn pri grow" data-act="add-entry">+ Ajouter ce que j'ai mangé</button>
+    <button class="btn" data-act="go-ideas">Idées</button>
+  </div>`;
+  if (boxes.length) h += `<div class="card"><h3>🥡 Mes boîtes au frigo</h3>${boxes.map(b => `
+    <div class="entry"><div class="grow">${esc(b.dish.name)}<div class="tiny mute">${fr(b.qty)} portion${b.qty > 1 ? 's' : ''} · ${r0(b.dish.n.kcal)} kcal · ${r0(b.dish.n.p)} g prot.</div></div>
+    <button class="btn sm" data-act="eat-box" data-id="${b.id}">J'en mange une</button></div>`).join('')}</div>`;
+  for (const [m, lbl] of MEALS) {
+    const list = entries.filter(e => e.meal === m); if (!list.length) continue;
+    const s = list.reduce((a, e) => addN(a, e), ZERO());
+    h += `<div class="card"><div class="row"><h3 class="grow" style="margin:0">${lbl}</h3><span class="small mute num">${r0(s.kcal)} kcal</span></div>
+    ${list.map(e => `<div class="entry"><div class="grow">${esc(e.name)}<div class="tiny mute num">${r0(e.kcal)} kcal · P ${r0(e.p)} · G ${r0(e.g)} · L ${r0(e.l)}</div></div>
+      <button class="icon-btn" data-act="del-entry" data-id="${e.id}" aria-label="Supprimer">×</button></div>`).join('')}</div>`;
+  }
+  if (!entries.length) h += `<div class="empty">Rien de noté pour ${UI.day === dateKey() ? "aujourd'hui" : 'ce jour'}.<br>Cuisine une recette ou ajoute un aliment.</div>`;
+  return h;
+}
+
+/* ----- Stock ----- */
+function viewStock() {
+  const q = norm(UI.sSearch);
+  const items = S.stock.filter(it => !q || norm(it.dish ? it.dish.name : ingOf(it.ing).name).includes(q));
+  let h = `<div class="row" style="margin-bottom:12px">
+    <input type="search" id="s-search" placeholder="Chercher dans mon stock" value="${esc(UI.sSearch)}">
+    <button class="btn pri" data-act="add-stock" style="flex:none">+ Ajouter</button></div>`;
+  if (!S.stock.length) h += `<div class="card empty">Ton stock est vide.<br>Ajoute ce que tu as dans le frigo, le congélateur et le placard.<br><br>
+    <button class="btn pri" data-act="add-stock">Ajouter des ingrédients</button></div>`;
+  for (const [pl, lbl, emo] of PLACES) {
+    const list = items.filter(it => it.place === pl)
+      .sort((a, b) => (a.dish ? 0 : 1) - (b.dish ? 0 : 1) || (a.dish ? a.dish.name : ingOf(a.ing).name).localeCompare(b.dish ? b.dish.name : ingOf(b.ing).name, 'fr'));
+    if (!list.length) continue;
+    h += `<div class="card"><div class="place-h"><h3>${emo} ${lbl}</h3><span class="badge">${list.length}</span></div>
+    ${list.map(it => it.dish ? `
+      <div class="item"><div class="grow name" data-act="edit-stock" data-id="${it.id}">🥡 ${esc(it.dish.name)}<div class="tiny mute">${fr(it.qty)} portion${it.qty > 1 ? 's' : ''} en boîte</div></div>
+      <button class="icon-btn" data-act="qty" data-id="${it.id}" data-d="-1">−</button><button class="icon-btn" data-act="qty" data-id="${it.id}" data-d="1">+</button></div>` : `
+      <div class="item"><div class="grow name" data-act="edit-stock" data-id="${it.id}">${esc(ingOf(it.ing).name)}<div class="tiny mute">${fmtQty(it.ing, it.qty)}</div></div>
+      <button class="icon-btn" data-act="qty" data-id="${it.id}" data-d="-1" aria-label="Moins">−</button><button class="icon-btn" data-act="qty" data-id="${it.id}" data-d="1" aria-label="Plus">+</button></div>`).join('')}
+    </div>`;
+  }
+  const bases = allIngs().filter(i => i.base);
+  h += `<details class="card"><summary class="small" style="cursor:pointer"><b>Ingrédients de base</b> <span class="mute">— toujours considérés disponibles, jamais déduits</span></summary>
+    <p class="small mute" style="margin:8px 0 0">${bases.map(b => esc(b.name)).join(' · ')}</p></details>`;
+  return h;
+}
+const stepOf = it => { if (it.dish) return 1; const i = ingOf(it.ing); return i.unit === 'pc' ? 1 : i.pw && i.pw <= 300 ? i.pw : i.unit === 'ml' ? 100 : 50; };
+
+/* ----- Recettes ----- */
+function viewRecipes() {
+  const persons = UI.persons ?? S.profile.persons ?? 1, q = norm(UI.rSearch), f = UI.rFilter;
+  let list = allRecipes().map(r => ({ r, st: recipeState(r, persons) }));
+  list = list.filter(({ r, st }) => (!q || norm(r.name).includes(q) || r.ings.some(x => norm(ingOf(x.ing).name).includes(q)))
+    && (f === 'all' || (f === 'ok' && st.ok) || (f === 'near' && st.missing.length <= 1) || f === r.type || (f === 'fast' && r.time <= 20) || (f === 'prot' && st.n.p >= 30) || (f === 'boite' && r.boite)));
+  list.sort((a, b) => b.st.ratio - a.st.ratio || b.st.n.p - a.st.n.p);
+  const nOk = allRecipes().filter(r => recipeState(r, persons).ok).length;
+  const chips = [['all', 'Toutes'], ['ok', `Faisables (${nOk})`], ['near', 'Il manque ≤ 1'], ['pdj', 'Petit-déj'], ['plat', 'Plats'], ['collation', 'Collations'], ['fast', '≤ 20 min'], ['prot', 'Riche en protéines'], ['boite', 'Boîtes']];
+  let h = `<div class="row" style="margin-bottom:10px">
+    <input type="search" id="r-search" placeholder="Recette ou ingrédient" value="${esc(UI.rSearch)}">
+    <div class="stepper" style="flex:none"><button class="icon-btn" data-act="persons" data-d="-1">−</button><b>${persons}</b><button class="icon-btn" data-act="persons" data-d="1">+</button></div></div>
+  <div class="tiny mute" style="margin:-4px 0 8px;text-align:right">pour ${persons} personne${persons > 1 ? 's' : ''}</div>
+  <div class="chips">${chips.map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-act="rfilter" data-f="${k}">${l}</button>`).join('')}</div>`;
+  if (!list.length) h += `<div class="empty">Aucune recette ne correspond.</div>`;
+  h += list.map(({ r, st }) => `<div class="card rcard" data-act="open-recipe" data-id="${r.id}">
+    <div class="row"><b class="grow">${esc(r.name)}</b>${st.ok ? '<span class="badge ok">✓ Tout en stock</span>' : st.missing.length === 1 ? '<span class="badge warn">Il manque 1</span>' : `<span class="badge">${st.missing.length} manquants</span>`}</div>
+    <div class="meta"><span class="badge">${RTYPES[r.type]}</span><span class="badge">⏱ ${r.time} min</span><span class="badge num">${r0(st.n.kcal)} kcal</span><span class="badge num">P ${r0(st.n.p)} g</span>${r.boite ? '<span class="badge">🥡</span>' : ''}</div>
+    ${st.missing.length && st.missing.length <= 3 ? `<div class="miss">Manque : ${st.missing.map(m => esc(m.i.name) + (m.partial ? ' (pas assez)' : '')).join(', ')}</div>` : ''}
+  </div>`).join('');
+  return h;
+}
+
+/* ----- Profil ----- */
+function viewProfile() {
+  const p = S.profile, T = targets(), t = T.t;
+  const customs = S.customIngs;
+  return `<div class="card">
+    <h3>Mon profil</h3>
+    <div class="grid2">
+      <div><label class="f">Sexe</label><div class="seg">${[['h', 'Homme'], ['f', 'Femme']].map(([k, l]) => `<button class="${p.sex === k ? 'on' : ''}" data-act="pf-seg" data-k="sex" data-v="${k}">${l}</button>`).join('')}</div></div>
+      <div><label class="f">Âge</label><input type="number" inputmode="numeric" data-pf="age" value="${p.age}"></div>
+      <div><label class="f">Taille (cm)</label><input type="number" inputmode="numeric" data-pf="height" value="${p.height}"></div>
+      <div><label class="f">Poids (kg)</label><input type="number" inputmode="decimal" step="0.1" data-pf="weight" value="${p.weight}"></div>
+    </div>
+    <label class="f">Activité</label>
+    <select data-pf="activity">${ACTIVITIES.map(([v, l]) => `<option value="${v}" ${p.activity == v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <label class="f">Objectif</label>
+    <div class="seg">${Object.entries(GOALS).map(([k, [l]]) => `<button class="${p.goal === k ? 'on' : ''}" data-act="pf-seg" data-k="goal" data-v="${k}">${l}</button>`).join('')}</div>
+    <label class="f">Nombre de personnes par défaut pour les recettes</label>
+    <input type="number" inputmode="numeric" min="1" data-pf="persons" value="${p.persons}">
+  </div>
+  <div class="card">
+    <h3>Mes besoins</h3>
+    <p class="small mute" style="margin:0 0 10px">Métabolisme de base ${fr(T.bmr)} kcal · dépense estimée ${fr(T.tdee)} kcal (formule Mifflin-St Jeor).</p>
+    <div class="grid4">
+      ${[['kcal', 'kcal'], ['p', 'Prot. (g)'], ['g', 'Gluc. (g)'], ['l', 'Lip. (g)']].map(([k, l]) => `<div><label class="f">${l}</label>
+        <input type="number" inputmode="numeric" data-tg="${k}" value="${t[k]}" ${p.custom ? '' : 'disabled'}></div>`).join('')}
+    </div>
+    <label class="row small" style="margin-top:10px;gap:8px"><input type="checkbox" data-act="custom-tg" ${p.custom ? 'checked' : ''}> Je fixe mes objectifs moi-même</label>
+  </div>
+  <div class="card">
+    <h3>Mes ingrédients</h3>
+    <p class="small mute" style="margin:0 0 8px">Ingrédients que tu as créés ou corrigés (valeurs pour 100 g).</p>
+    ${customs.length ? customs.map(i => `<div class="item"><div class="grow name" data-act="edit-ing" data-id="${esc(i.id)}">${esc(i.name || ingOf(i.id).name)}<div class="tiny mute">${r0(ingOf(i.id).n.kcal)} kcal · P ${ingOf(i.id).n.p}</div></div></div>`).join('') : '<div class="small mute">Aucun pour l\'instant.</div>'}
+    <div class="row" style="gap:8px;margin-top:10px"><button class="btn sm" data-act="new-ing">+ Créer un ingrédient</button><button class="btn sm" data-act="pick-edit-ing">Corriger un ingrédient</button></div>
+  </div>
+  <div class="card">
+    <h3>Données</h3>
+    <p class="small mute" style="margin:0 0 10px">${CLOUD ? `Connecté : ${esc(currentUser?.email || '')}. Tes données se synchronisent entre tes appareils.` : 'Mode local : tes données restent sur cet appareil. Pense à exporter une sauvegarde de temps en temps.'}</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      <button class="btn sm" data-act="export">Exporter (fichier)</button>
+      <label class="btn sm">Importer<input type="file" accept="application/json" id="import-file" hidden></label>
+      ${CLOUD ? '<button class="btn sm danger" data-act="logout">Se déconnecter</button>' : ''}
+    </div>
+  </div>
+  <p class="tiny mute" style="text-align:center">Valeurs nutritionnelles : table Ciqual (ANSES), valeurs moyennes.</p>`;
+}
+
+/* ============================== 6. FICHES ============================== */
+let sheetClose = null;
+function openSheet(html, onMount) {
+  const root = $('sheet-root');
+  root.innerHTML = `<div class="backdrop"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`;
+  const bd = root.firstChild;
+  bd.addEventListener('click', e => { if (e.target === bd) closeSheet(); });
+  if (onMount) onMount(bd.querySelector('.sheet'));
+}
+function closeSheet() { $('sheet-root').innerHTML = ''; }
+const sheetHead = t => `<div class="sheet-h"><h2>${esc(t)}</h2><button class="icon-btn" data-act="close" aria-label="Fermer">×</button></div>`;
+
+// --- Choisir un ingrédient (recherche) ---
+function ingPicker(sh, { onPick, filter = i => !i.base, showStock = false }) {
+  const inp = sh.querySelector('.ip-search'), res = sh.querySelector('.results');
+  const draw = () => {
+    const q = norm(inp.value.trim());
+    const list = allIngs().filter(filter).filter(i => !q || norm(i.name).includes(q)).slice(0, 60);
+    res.innerHTML = list.map(i => `<div class="res" data-id="${esc(i.id)}"><div class="grow">${esc(i.name)}<div class="tiny mute">${PLACE_NAME[i.place]}${showStock && available(i.id) ? ' · en stock : ' + fmtQty(i.id, available(i.id)) : ''}</div></div><span class="tiny mute">${r0(i.n.kcal)} kcal${i.unit === 'pc' ? '/pce' : '/100' + i.unit}</span></div>`).join('')
+      + `<div class="res" data-new="1"><div class="grow" style="color:var(--acc)">+ Créer « ${esc(inp.value.trim() || 'nouvel ingrédient')} »</div></div>`;
+  };
+  inp.addEventListener('input', draw);
+  res.addEventListener('click', e => {
+    const r = e.target.closest('.res'); if (!r) return;
+    if (r.dataset.new) return sheetIngredient(null, inp.value.trim(), created => onPick(created.id));
+    onPick(r.dataset.id);
+  });
+  draw(); setTimeout(() => inp.focus(), 50);
+}
+
+// --- Saisie d'une quantité (avec choix g / pièces) ---
+function qtyField(ingId, val) {
+  const i = ingOf(ingId), canPc = i.unit !== 'pc' && i.pw;
+  return `<label class="f">Quantité</label><div class="row">
+    <input type="number" inputmode="decimal" step="any" class="q-in" value="${val ?? ''}" placeholder="${i.unit === 'pc' ? 'nombre' : 'ex. ' + (i.unit === 'ml' ? '500' : '200')}">
+    ${canPc ? `<div class="seg" style="flex:none"><button class="on" data-u="base">${i.unit}</button><button data-u="pc">pièce(s)</button></div>` : `<span class="mute" style="flex:none">${i.unit === 'pc' ? 'pièce(s)' : i.unit}</span>`}
+  </div>${canPc ? `<div class="tiny mute" style="margin-top:4px">1 pièce ≈ ${i.pw} g</div>` : ''}`;
+}
+function readQty(sh, ingId) {
+  const i = ingOf(ingId), v = num(sh.querySelector('.q-in').value), u = sh.querySelector('.seg button.on[data-u]');
+  return u && u.dataset.u === 'pc' ? v * i.pw : v;
+}
+function wireSeg(sh) {
+  sh.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !seg.contains(b)) return;
+    seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  }));
+}
+
+// --- Ajouter au stock ---
+function sheetAddStock() {
+  openSheet(`${sheetHead('Ajouter au stock')}<input type="search" class="ip-search" placeholder="Chercher un ingrédient (poulet, pâtes…)"><div class="results" style="margin-top:8px"></div>`,
+    sh => ingPicker(sh, { onPick: id => sheetStockQty(id), showStock: true }));
+}
+function sheetStockQty(ingId) {
+  const i = ingOf(ingId);
+  openSheet(`${sheetHead(i.name)}
+    ${qtyField(ingId)}
+    <label class="f">Rangement</label>
+    <div class="seg" id="pl">${PLACES.map(([k, l]) => `<button data-p="${k}" class="${i.place === k ? 'on' : ''}">${l.split(' ')[0]}</button>`).join('')}</div>
+    <div class="row" style="gap:8px;margin-top:16px"><button class="btn" data-act="add-stock">← Autre ingrédient</button><button class="btn pri grow" id="ok">Ajouter</button></div>`, sh => {
+    wireSeg(sh);
+    const go = () => {
+      const q = readQty(sh, ingId); if (q <= 0) return toast('Indique une quantité');
+      addStock(ingId, q, sh.querySelector('#pl button.on').dataset.p); save();
+      toast(`${i.name} ajouté`); sheetAddStock(); render();
+    };
+    sh.querySelector('#ok').onclick = go;
+    sh.querySelector('.q-in').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    setTimeout(() => sh.querySelector('.q-in').focus(), 50);
+  });
+}
+function sheetEditStock(id) {
+  const it = S.stock.find(x => x.id === id); if (!it) return;
+  const name = it.dish ? it.dish.name : ingOf(it.ing).name;
+  openSheet(`${sheetHead(name)}
+    ${it.dish ? `<label class="f">Portions</label><input type="number" inputmode="decimal" class="q-in" value="${it.qty}">` : qtyField(it.ing, +it.qty.toFixed(1))}
+    <label class="f">Rangement</label>
+    <div class="seg" id="pl">${PLACES.map(([k, l]) => `<button data-p="${k}" class="${it.place === k ? 'on' : ''}">${l.split(' ')[0]}</button>`).join('')}</div>
+    <div class="row" style="gap:8px;margin-top:16px"><button class="btn danger" id="del">Supprimer</button><button class="btn pri grow" id="ok">Enregistrer</button></div>`, sh => {
+    wireSeg(sh);
+    sh.querySelector('#ok').onclick = () => {
+      const q = it.dish ? num(sh.querySelector('.q-in').value) : readQty(sh, it.ing);
+      it.qty = q; it.place = sh.querySelector('#pl button.on').dataset.p;
+      S.stock = S.stock.filter(x => x.qty > 1e-6); save(); closeSheet(); render();
+    };
+    sh.querySelector('#del').onclick = () => { S.stock = S.stock.filter(x => x.id !== id); save(); closeSheet(); render(); };
+  });
+}
+
+// --- Créer / corriger un ingrédient ---
+function sheetIngredient(id, presetName = '', onDone) {
+  const base = id ? ingOf(id) : { name: presetName, unit: 'g', place: 'frigo', n: { kcal: '', p: '', g: '', l: '' } };
+  const isBuiltin = id && INGREDIENTS.some(x => x.id === id), isCustom = id && S.customIngs.some(x => x.id === id);
+  openSheet(`${sheetHead(id ? 'Modifier l\'ingrédient' : 'Nouvel ingrédient')}
+    <label class="f">Nom</label><input type="text" id="i-name" value="${esc(base.name)}">
+    <div class="grid2">
+      <div><label class="f">Unité</label><select id="i-unit">${[['g', 'grammes'], ['ml', 'millilitres'], ['pc', 'pièces']].map(([k, l]) => `<option value="${k}" ${base.unit === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div><label class="f">Poids d'une pièce (g)</label><input type="number" inputmode="decimal" id="i-pw" value="${base.pw ?? ''}" placeholder="facultatif"></div>
+    </div>
+    <label class="f">Rangement habituel</label>
+    <select id="i-place">${PLACES.map(([k, l]) => `<option value="${k}" ${base.place === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <label class="f">Valeurs pour 100 g / 100 ml (voir l'étiquette)</label>
+    <div class="grid4">${[['kcal', 'kcal'], ['p', 'Prot.'], ['g', 'Gluc.'], ['l', 'Lip.']].map(([k, l]) => `<div><input type="number" inputmode="decimal" step="any" id="i-${k}" value="${base.n[k]}" placeholder="${l}"><div class="tiny mute" style="text-align:center">${l}</div></div>`).join('')}</div>
+    <label class="row small" style="margin-top:10px;gap:8px"><input type="checkbox" id="i-base" ${base.base ? 'checked' : ''}> Ingrédient de base (toujours dispo, jamais déduit)</label>
+    <div class="row" style="gap:8px;margin-top:16px">${isCustom ? `<button class="btn danger" id="del">${isBuiltin ? 'Revenir aux valeurs d\'origine' : 'Supprimer'}</button>` : ''}<button class="btn pri grow" id="ok">Enregistrer</button></div>`, sh => {
+    sh.querySelector('#ok').onclick = () => {
+      const name = sh.querySelector('#i-name').value.trim(); if (!name) return toast('Donne un nom');
+      const g = k => num(sh.querySelector('#i-' + k).value);
+      const obj = { id: id || 'c_' + uid(), name, unit: sh.querySelector('#i-unit').value, place: sh.querySelector('#i-place').value,
+        n: { kcal: g('kcal'), p: g('p'), g: g('g'), l: g('l') }, base: sh.querySelector('#i-base').checked };
+      const pw = num(sh.querySelector('#i-pw').value); if (pw > 0) obj.pw = pw; else if (isBuiltin && base.pw) obj.pw = base.pw;
+      if (isBuiltin && base.fam) obj.fam = base.fam;
+      S.customIngs = S.customIngs.filter(x => x.id !== obj.id).concat(obj); ING = ingMap(); save();
+      toast('Ingrédient enregistré');
+      if (onDone) onDone(obj); else { closeSheet(); render(); }
+    };
+    const del = sh.querySelector('#del');
+    if (del) del.onclick = () => { S.customIngs = S.customIngs.filter(x => x.id !== id); ING = ingMap(); save(); closeSheet(); render(); };
+  });
+}
+
+// --- Recette ---
+function sheetRecipe(id, persons) {
+  const r = allRecipes().find(x => x.id === id); if (!r) return;
+  persons = persons ?? UI.persons ?? S.profile.persons ?? 1;
+  const st = recipeState(r, persons), n = st.n;
+  openSheet(`${sheetHead(r.name)}
+    <div class="meta row" style="flex-wrap:wrap;gap:6px;margin-bottom:12px"><span class="badge">${RTYPES[r.type]}</span><span class="badge">⏱ ${r.time} min</span>${r.boite ? '<span class="badge">🥡 se garde en boîte</span>' : ''}</div>
+    <div class="card"><div class="tiny mute" style="margin-bottom:6px">Par portion</div>
+      <div class="grid4 num" style="text-align:center">
+        <div><b>${r0(n.kcal)}</b><div class="tiny mute">kcal</div></div><div><b style="color:var(--p)">${r0(n.p)} g</b><div class="tiny mute">prot.</div></div>
+        <div><b style="color:var(--g)">${r0(n.g)} g</b><div class="tiny mute">gluc.</div></div><div><b style="color:var(--l)">${r0(n.l)} g</b><div class="tiny mute">lip.</div></div></div></div>
+    <div class="card">
+      <div class="row" style="margin-bottom:6px"><h3 class="grow" style="margin:0">Ingrédients</h3>
+        <div class="stepper"><button class="icon-btn" id="pm">−</button><b>${persons}</b><button class="icon-btn" id="pp">+</button></div></div>
+      <div class="tiny mute" style="text-align:right;margin-bottom:4px">pour ${persons} personne${persons > 1 ? 's' : ''}</div>
+      ${st.lines.map(l => `<div class="ing-line">
+        <span class="ico ${l.base ? 'base' : l.ok ? 'ok' : 'no'}">${l.base ? '•' : l.ok ? '✓' : '✗'}</span>
+        <div class="grow">${esc(l.i.name)}${l.opt ? ' <span class="tiny mute">(facultatif)</span>' : ''}
+          ${!l.base && !l.ok ? `<div class="tiny" style="color:var(--bad)">${l.av > 0 ? 'en stock : ' + fmtQty(l.ing, l.av) : 'pas en stock'}</div>` : ''}</div>
+        <span class="small num">${l.base && l.q <= 3 ? '' : fmtQty(l.ing, l.q)}</span></div>`).join('')}
+    </div>
+    <div class="card"><h3>Préparation</h3><ol class="steps">${r.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+      ${r.src ? `<p class="tiny mute" style="margin:8px 0 0">Recette adaptée de <a href="${esc(r.src)}" target="_blank" rel="noopener">${esc(new URL(r.src).hostname.replace('www.', ''))}</a></p>` : '<p class="tiny mute" style="margin:8px 0 0">Classique maison</p>'}</div>
+    ${!st.ok ? `<div class="banner">Il manque ${st.missing.map(m => esc(m.i.name)).join(', ')}. Tu peux quand même cuisiner : seul ce que tu as sera retiré du stock.</div>` : ''}
+    <button class="btn pri full" id="cook">Je cuisine</button>`, sh => {
+    sh.querySelector('#pm').onclick = () => sheetRecipe(id, Math.max(1, persons - 1));
+    sh.querySelector('#pp').onclick = () => sheetRecipe(id, persons + 1);
+    sh.querySelector('#cook').onclick = () => sheetCook(r, persons);
+  });
+}
+function sheetCook(r, persons) {
+  let eat = Math.min(1, persons);
+  const draw = () => {
+    const boxes = persons - eat;
+    openSheet(`${sheetHead('Je cuisine')}
+      <p style="margin:0 0 10px"><b>${esc(r.name)}</b> pour ${persons} personne${persons > 1 ? 's' : ''}</p>
+      <div class="card">
+        <div class="row"><div class="grow">Portions que je mange maintenant</div>
+          <div class="stepper"><button class="icon-btn" id="em">−</button><b>${eat}</b><button class="icon-btn" id="ep">+</button></div></div>
+        <label class="f">Repas</label>
+        <select id="meal">${MEALS.map(([k, l]) => `<option value="${k}" ${k === defaultMeal() ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${boxes > 0 ? `<label class="row small" style="margin-top:12px;gap:8px"><input type="checkbox" id="box" checked> Mettre les ${boxes} autre${boxes > 1 ? 's' : ''} portion${boxes > 1 ? 's' : ''} en boîte au frigo 🥡</label>
+          <div class="tiny mute" style="margin:4px 0 0 24px">Décoche si elles sont mangées par d'autres personnes.</div>` : ''}
+      </div>
+      <p class="small mute">Les ingrédients utilisés seront retirés du stock (sauf les ingrédients de base). ${eat ? 'Ta portion sera ajoutée à ton journal du jour.' : ''}</p>
+      <button class="btn pri full" id="go">Valider</button>`, sh => {
+      sh.querySelector('#em').onclick = () => { eat = Math.max(0, eat - 1); draw(); };
+      sh.querySelector('#ep').onclick = () => { eat = Math.min(persons, eat + 1); draw(); };
+      sh.querySelector('#go').onclick = () => {
+        const st = recipeState(r, persons), meal = sh.querySelector('#meal').value, box = sh.querySelector('#box');
+        for (const l of st.lines) if (!l.base && l.av > 0) deduct(l.ing, Math.min(l.q, l.av));
+        const n = st.n, day = dateKey();
+        for (let k = 0; k < eat; k++) addEntry(day, { id: uid(), meal, name: r.name, kcal: r0(n.kcal), p: r0(n.p), g: r0(n.g), l: r0(n.l), recipe: r.id });
+        if (box && box.checked && boxes > 0) S.stock.push({ id: uid(), dish: { name: r.name, n: { kcal: r0(n.kcal), p: r0(n.p), g: r0(n.g), l: r0(n.l) } }, qty: boxes, place: 'frigo' });
+        save(); closeSheet(); UI.day = day; UI.tab = 'today'; window.scrollTo(0, 0); listenDay(); toast('Bon appétit ! Stock mis à jour'); render();
+      };
+    });
+  };
+  draw();
+}
+
+// --- Ajouter au journal ---
+function sheetAddEntry(mode = 'food') {
+  const meal = defaultMeal();
+  const head = `${sheetHead('Ajouter un repas')}
+    <div class="seg" style="margin-bottom:12px"><button class="${mode === 'food' ? 'on' : ''}" data-act="entry-mode" data-m="food">Un aliment</button><button class="${mode === 'free' ? 'on' : ''}" data-act="entry-mode" data-m="free">Saisie libre (resto…)</button></div>`;
+  if (mode === 'food') {
+    openSheet(`${head}<input type="search" class="ip-search" placeholder="Chercher un aliment"><div class="results" style="margin-top:8px"></div>`,
+      sh => ingPicker(sh, { onPick: id => sheetEntryQty(id), filter: () => true, showStock: true }));
+  } else {
+    openSheet(`${head}
+      <label class="f">Quoi ?</label><input type="text" id="e-name" placeholder="ex. Menu burger au resto">
+      <label class="f">Repas</label><select id="e-meal">${MEALS.map(([k, l]) => `<option value="${k}" ${k === meal ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <label class="f">Valeurs (estimation)</label>
+      <div class="grid4">${[['kcal', 'kcal'], ['p', 'Prot. g'], ['g', 'Gluc. g'], ['l', 'Lip. g']].map(([k, l]) => `<div><input type="number" inputmode="decimal" id="e-${k}" placeholder="0"><div class="tiny mute" style="text-align:center">${l}</div></div>`).join('')}</div>
+      <button class="btn pri full" id="ok" style="margin-top:16px">Ajouter</button>`, sh => {
+      setTimeout(() => sh.querySelector('#e-name').focus(), 50);
+      sh.querySelector('#ok').onclick = () => {
+        const name = sh.querySelector('#e-name').value.trim() || 'Repas', g = k => num(sh.querySelector('#e-' + k).value);
+        addEntry(UI.day, { id: uid(), meal: sh.querySelector('#e-meal').value, name, kcal: g('kcal'), p: g('p'), g: g('g'), l: g('l') });
+        closeSheet(); render();
+      };
+    });
+  }
+}
+function sheetEntryQty(ingId) {
+  const i = ingOf(ingId), av = i.base ? 0 : available(ingId);
+  openSheet(`${sheetHead(i.name)}
+    ${qtyField(ingId)}
+    <label class="f">Repas</label><select id="e-meal">${MEALS.map(([k, l]) => `<option value="${k}" ${k === defaultMeal() ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <div id="prev" class="small mute" style="margin-top:10px"></div>
+    ${av > 0 ? `<label class="row small" style="margin-top:10px;gap:8px"><input type="checkbox" id="ded" checked> Retirer du stock (en stock : ${fmtQty(ingId, av)})</label>` : ''}
+    <button class="btn pri full" id="ok" style="margin-top:16px">Ajouter</button>`, sh => {
+    wireSeg(sh);
+    const prev = () => { const q = readQty(sh, ingId), n = nutrOf(ingId, q); sh.querySelector('#prev').textContent = q > 0 ? `${r0(n.kcal)} kcal · P ${r0(n.p)} g · G ${r0(n.g)} g · L ${r0(n.l)} g` : ''; };
+    sh.addEventListener('input', prev); sh.addEventListener('click', prev);
+    setTimeout(() => sh.querySelector('.q-in').focus(), 50);
+    sh.querySelector('#ok').onclick = () => {
+      const q = readQty(sh, ingId); if (q <= 0) return toast('Indique une quantité');
+      const n = nutrOf(ingId, q), ded = sh.querySelector('#ded');
+      addEntry(UI.day, { id: uid(), meal: sh.querySelector('#e-meal').value, name: `${i.name} (${fmtQty(ingId, q).replace(/<[^>]+>/g, '')})`, kcal: r0(n.kcal), p: r0(n.p), g: r0(n.g), l: r0(n.l) });
+      if (ded && ded.checked) { deduct(ingId, Math.min(q, av)); save(); }
+      closeSheet(); render();
+    };
+  });
+}
+function sheetEatBox(id) {
+  const b = S.stock.find(x => x.id === id); if (!b) return;
+  openSheet(`${sheetHead(b.dish.name)}
+    <label class="f">Repas</label><select id="e-meal">${MEALS.map(([k, l]) => `<option value="${k}" ${k === defaultMeal() ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <p class="small mute">1 portion : ${b.dish.n.kcal} kcal · P ${b.dish.n.p} g · G ${b.dish.n.g} g · L ${b.dish.n.l} g</p>
+    <button class="btn pri full" id="ok">J'en mange une</button>`, sh => {
+    sh.querySelector('#ok').onclick = () => {
+      addEntry(UI.day, { id: uid(), meal: sh.querySelector('#e-meal').value, name: b.dish.name + ' (boîte)', ...b.dish.n });
+      b.qty -= 1; S.stock = S.stock.filter(x => x.qty > 1e-6); save(); closeSheet(); render();
+    };
+  });
+}
+
+/* ============================== ÉVÉNEMENTS ============================== */
+document.addEventListener('click', e => {
+  const tab = e.target.closest('#tabs button');
+  if (tab) { UI.tab = tab.dataset.tab; window.scrollTo(0, 0); return render(); }
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const a = el.dataset.act, id = el.dataset.id;
+  switch (a) {
+    case 'close': return closeSheet();
+    case 'day': UI.day = shiftDay(UI.day, +el.dataset.n); listenDay(); return render();
+    case 'add-entry': return sheetAddEntry();
+    case 'entry-mode': return sheetAddEntry(el.dataset.m);
+    case 'del-entry': removeEntry(UI.day, id); return render();
+    case 'eat-box': return sheetEatBox(id);
+    case 'go-ideas': UI.tab = 'recipes'; UI.rFilter = 'ok'; return render();
+    case 'add-stock': return sheetAddStock();
+    case 'edit-stock': return sheetEditStock(id);
+    case 'qty': {
+      const it = S.stock.find(x => x.id === id); if (!it) return;
+      it.qty = Math.max(0, it.qty + stepOf(it) * +el.dataset.d);
+      S.stock = S.stock.filter(x => x.qty > 1e-6); save(); return render();
+    }
+    case 'persons': UI.persons = Math.max(1, (UI.persons ?? S.profile.persons ?? 1) + +el.dataset.d); return render();
+    case 'rfilter': UI.rFilter = el.dataset.f; return render();
+    case 'open-recipe': return sheetRecipe(id);
+    case 'pf-seg': S.profile[el.dataset.k] = el.dataset.v; save(); return render();
+    case 'custom-tg': S.profile.custom = el.checked ? { ...targets().auto } : null; save(); return render();
+    case 'new-ing': return sheetIngredient(null);
+    case 'edit-ing': return sheetIngredient(id);
+    case 'pick-edit-ing': return openSheet(`${sheetHead('Corriger un ingrédient')}<input type="search" class="ip-search" placeholder="Chercher"><div class="results" style="margin-top:8px"></div>`,
+      sh => ingPicker(sh, { onPick: iid => sheetIngredient(iid), filter: () => true }));
+    case 'export': {
+      const blob = new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob), lnk = document.createElement('a');
+      lnk.href = url; lnk.download = `mes-repas-${dateKey()}.json`; lnk.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); return;
+    }
+    case 'logout': if (confirm('Se déconnecter ?')) auth.signOut(); return;
+  }
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 's-search') { UI.sSearch = t.value; const pos = t.selectionStart; render(); const n = $('s-search'); n.focus(); n.setSelectionRange(pos, pos); }
+  if (t.id === 'r-search') { UI.rSearch = t.value; const pos = t.selectionStart; render(); const n = $('r-search'); n.focus(); n.setSelectionRange(pos, pos); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.pf) { const k = t.dataset.pf; S.profile[k] = num(t.value) || blank().profile[k]; save(); render(); }
+  if (t.dataset.tg && S.profile.custom) { S.profile.custom[t.dataset.tg] = num(t.value); save(); render(); }
+  if (t.id === 'import-file' && t.files[0]) {
+    t.files[0].text().then(txt => {
+      const d = JSON.parse(txt); if (!d.profile || !Array.isArray(d.stock)) throw new Error('format');
+      if (!confirm('Remplacer tes données actuelles par celles du fichier ?')) return;
+      S = Object.assign(blank(), d); save();
+      if (CLOUD && currentUser) Object.entries(S.days).forEach(([k, v]) => db.collection('users').doc(currentUser.uid).collection('days').doc(k).set({ entries: v }));
+      toast('Données importées'); render();
+    }).catch(() => toast('Fichier invalide'));
+  }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+/* ============================== 7. DÉMARRAGE ============================== */
+function showLogin() {
+  document.querySelector('nav.tabs').style.display = 'none'; $('title').textContent = 'Mes repas';
+  $('view').innerHTML = `<div class="card login"><h3>Connexion</h3>
+    <p class="small mute" style="margin-top:0">Connecte-toi pour retrouver ton stock et ton suivi sur tous tes appareils.</p>
+    <label class="f">E-mail</label><input type="email" id="l-mail" autocomplete="email">
+    <label class="f">Mot de passe</label><input type="password" id="l-pass" autocomplete="current-password">
+    <div class="small" id="l-err" style="color:var(--bad);margin-top:8px"></div>
+    <button class="btn pri full" id="l-in" style="margin-top:12px">Se connecter</button>
+    <button class="btn ghost full" id="l-up">Créer un compte</button></div>`;
+  const go = up => {
+    const m = $('l-mail').value.trim(), p = $('l-pass').value;
+    (up ? auth.createUserWithEmailAndPassword(m, p) : auth.signInWithEmailAndPassword(m, p))
+      .catch(err => { $('l-err').textContent = ({ 'auth/invalid-credential': 'E-mail ou mot de passe incorrect.', 'auth/weak-password': 'Mot de passe trop court (6 caractères minimum).', 'auth/email-already-in-use': 'Ce compte existe déjà.', 'auth/invalid-email': 'E-mail invalide.' })[err.code] || err.message; });
+  };
+  $('l-in').onclick = () => go(false); $('l-up').onclick = () => go(true);
+}
+function start() {
+  loadLocal(); setSync('idle');
+  if (!CLOUD) return render();
+  auth.onAuthStateChanged(u => {
+    if (unsubMain) { unsubMain(); unsubMain = null; } if (unsubDay) { unsubDay(); unsubDay = null; }
+    currentUser = u;
+    if (!u) return showLogin();
+    document.querySelector('nav.tabs').style.display = ''; setSync('busy'); render(); listenCloud();
+  });
+}
+start();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
