@@ -432,3 +432,49 @@ const RECIPES = [
     [['tortilla', 2], ['poulet', 100], ['salade', 20], ['tomate', 50], ['fromage_blanc', 30, 'opt'], ['epices', 1], ['huile', 3]],
     ['Cuire le poulet émincé avec les épices.', 'Mélanger le fromage blanc avec herbes, sel et poivre pour la sauce.', 'Garnir les tortillas et rouler.']),
 ];
+
+/* ---------------------------------------------------------------------
+   Visuels : emoji de chaque ingrédient et de chaque recette, rayons pour la liste de courses
+   --------------------------------------------------------------------- */
+const EMO = {
+  poulet: '🍗', aiguillettes_poulet: '🍗', cuisse_poulet: '🍗', dinde: '🍗', cordon_bleu: '🍗', nuggets: '🍗',
+  boeuf_hache: '🥩', steak_hache_15: '🥩', steak_hache_5: '🥩', viande_hachee_20: '🥩', porc: '🥩',
+  lardons: '🥓', bacon: '🥓', jambon: '🍖', jambon_cru: '🍖', chorizo: '🌭', saucisse: '🌭', chipolata: '🌭', merguez: '🌭', knacki: '🌭',
+  surimi: '🦀', thon: '🐟', poisson_pane: '🐟', poisson_blanc: '🐟', saumon: '🐟', saumon_fume: '🐟', sardines: '🐟', maquereau: '🐟', crevettes: '🦐',
+  oeuf: '🥚', lait: '🥛', lait_entier: '🥛', lait_ecreme: '🥛', creme: '🥛', creme_12: '🥛', creme_18: '🥛', creme_30: '🥛',
+  fromage_blanc: '🥣', fromage_blanc_0: '🥣', skyr: '🥣', yaourt: '🥣', yaourt_grec: '🥣', yaourt_fruits: '🍓', dessert_lacte: '🍮',
+  emmental: '🧀', mozzarella: '🧀', chevre: '🧀', fromage_fondu: '🧀', reblochon: '🧀', parmesan: '🧀', fromage_frais: '🧀', comte: '🧀',
+  raclette: '🧀', feta: '🧀', camembert: '🧀', ricotta: '🧀', mascarpone: '🧀', beurre: '🧈',
+  pates: '🍝', coquillettes: '🍝', macaroni: '🍝', spaghetti: '🍝', penne: '🍝', capellini: '🍝', tagliatelles: '🍝',
+  riz: '🍚', semoule: '🍚', quinoa: '🌾', boulgour: '🌾', lentilles: '🫘', gnocchi: '🥔', pdt: '🥔', puree_flocons: '🥔',
+  frites_four: '🍟', pommes_noisettes: '🥔', tortilla: '🫓', pain_burger: '🍔', pain_mie: '🍞', pain: '🥖', biscottes: '🍞', brioche: '🍞',
+  flocons_avoine: '🌾', muesli: '🥣', cereales: '🥣', farine: '🌾', pate_tarte: '🥧', pate_feuilletee: '🥧', pate_brisee: '🥧',
+  raviolis_frais: '🥟', raviolis_boite: '🥫', plat_cuisine: '🍲', pizza: '🍕', soupe: '🍲', croissant: '🥐', pain_chocolat: '🥐',
+  biscuits: '🍪', chips: '🥨', pate_tartiner: '🍫', confiture: '🍓', compote: '🍏', chocolat_noir: '🍫', chocolat_lait: '🍫', noix: '🥜',
+  glace: '🍨', preparation_dessert: '🍮', whey: '💪', miel: '🍯',
+  poivron: '🫑', poivrons_surgeles: '🫑', oignon: '🧅', tomate: '🍅', tomates_concassees: '🥫', sauce_tomate: '🥫', champignons: '🍄', champignons_boite: '🍄',
+  mais: '🌽', petits_pois: '🫛', haricots_rouges: '🫘', pois_chiches: '🫘', courgette: '🥒', carotte: '🥕', salade: '🥬', haricots_verts: '🫛',
+  brocoli: '🥦', epinards: '🥬', concombre: '🥒', aubergine: '🍆', poireau: '🥬', chou_fleur: '🥦', melange_legumes: '🥦', avocat: '🥑',
+  banane: '🍌', pomme: '🍎', fruits_rouges: '🫐', orange: '🍊', clementine: '🍊', poire: '🍐', kiwi: '🥝', fraise: '🍓', raisin: '🍇',
+  sauce_tikka: '🍛', sauce_fajita: '🌶️', lait_coco: '🥥', sauce_poivre: '🫙', mayonnaise: '🫙', ketchup: '🍅',
+  jus: '🧃', soda: '🥤', soda_zero: '🥤', boisson_energisante: '⚡', sirop: '🧃',
+  huile: '🫒', sel_poivre: '🧂', epices: '🌿', ail: '🧄', moutarde: '🫙', sauce_soja: '🫙', sucre: '🍬', levure: '🧁', bouillon: '🫙', citron: '🍋',
+};
+const REMO = {
+  fajitas_poulet: '🌯', tikka_masala: '🍛', gnocchi_carbonara: '🥔', carbonara_creme: '🍝', burger_maison: '🍔', chili_con_carne: '🌶️',
+  quiche_lorraine: '🥧', bolognaise: '🍝', tarte_chevre_tomate: '🥧', pancakes_proteines: '🥞', curry_coco: '🍛', hachis_parmentier: '🥘',
+  riz_cantonais: '🍚', quesadillas_poulet: '🌮', salade_pates_surimi: '🥗', coquillettes_jambon: '🧀', pates_poulet_champignons: '🍝',
+  shakshuka: '🍳', tartiflette: '🧀', couscous_poulet: '🥘', porridge_banane: '🥣', pates_thon: '🐟', omelette_fromage: '🍳',
+  oeufs_brouilles: '🍳', bowl_fromage_blanc: '🥣', yaourt_grec_fruits: '🍓', steak_pates: '🥩', steak_frites: '🍟',
+  poulet_riz_legumes: '🍱', poisson_pane_puree: '🐟', croque_monsieur: '🥪', wraps_poulet: '🌯',
+};
+// Rayons de la liste de courses
+const RAYONS = [
+  ['fl', 'Fruits & légumes', '🥕'], ['vp', 'Viandes & poissons', '🥩'], ['cr', 'Crèmerie & œufs', '🧀'],
+  ['ep', 'Épicerie', '🥫'], ['su', 'Surgelés', '❄️'], ['bo', 'Boissons', '🥤'], ['au', 'Autres', '🛒'],
+];
+const RAYON_OF = {};
+'poivron oignon tomate champignons courgette carotte salade concombre aubergine poireau chou_fleur avocat banane pomme orange clementine poire kiwi fraise raisin pdt citron ail'.split(' ').forEach(k => RAYON_OF[k] = 'fl');
+'poulet aiguillettes_poulet cuisse_poulet dinde boeuf_hache steak_hache_15 steak_hache_5 viande_hachee_20 porc lardons bacon jambon jambon_cru chorizo saucisse chipolata merguez knacki cordon_bleu surimi saumon_fume crevettes'.split(' ').forEach(k => RAYON_OF[k] = 'vp');
+'oeuf lait lait_entier lait_ecreme creme creme_12 creme_18 creme_30 fromage_blanc fromage_blanc_0 skyr yaourt yaourt_grec yaourt_fruits dessert_lacte emmental mozzarella chevre fromage_fondu reblochon parmesan fromage_frais comte raclette feta camembert ricotta mascarpone beurre gnocchi pate_tarte pate_feuilletee pate_brisee raviolis_frais'.split(' ').forEach(k => RAYON_OF[k] = 'cr');
+'jus soda soda_zero boisson_energisante sirop'.split(' ').forEach(k => RAYON_OF[k] = 'bo');

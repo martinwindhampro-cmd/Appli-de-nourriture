@@ -1,8 +1,10 @@
 # Mes repas
 
-Appli perso : stock (frigo, congélateur, placard), import du ticket Super U (PDF), recettes proposées selon ce que j'ai, suivi calories et macros.
+Appli perso : stock (frigo, congélateur, placard), import du ticket Super U (PDF), recettes proposées selon ce que j'ai,
+planning de la semaine avec liste de courses, recettes perso, suivi calories et macros.
 
-Fichiers : `index.html` (l'appli), `data.js` (ingrédients et recettes), `sw.js` (hors ligne), icônes et manifeste.
+Fichiers : `index.html` (page et design), `app.js` (l'appli), `ticket.js` (import du ticket Super U),
+`data.js` (ingrédients, recettes, emojis, rayons), `sw.js` (hors ligne), icônes et manifeste.
 
 ## Mise en ligne (GitHub Pages)
 Settings → Pages → Source : « Deploy from a branch », branche `main`, dossier `/ (root)`.
